@@ -1,0 +1,17 @@
+<Presentation>
+  <div class="page">
+    <p>Scalability and Consistency</p>
+    <p>Systems which are scalable</p>
+    <p>yet consistent can be difficult to build</p>
+  </div>
+  <div class="page">
+    <p>Writing vs Reading</p>
+    <p>While writing to a shared log provides strong consistency and &gt;1/2M appends/s,</p>
+    <p>To provide the strongest level of consistency, only updates are logged,</p>
+    <p>So reads are more expensive, as clients now have to read multiple updates</p>
+    <p>increment</p>
+    <p>increment</p>
+    <p>increment increment</p>
+  </div>
+</Presentation>
+

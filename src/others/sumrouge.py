@@ -1,13 +1,12 @@
 from __future__ import print_function, unicode_literals, division
 
-import os
-import re
 import codecs
+import os
 import platform
-
+import re
+from functools import partial
 from subprocess import check_output
 from tempfile import mkdtemp
-from functools import partial
 
 try:
     from configparser import ConfigParser
@@ -17,15 +16,14 @@ except ImportError:
 from pyrouge.utils import log
 from pyrouge.utils.file_utils import verify_dir
 
-
 REMAP = {"-lrb-": "(", "-rrb-": ")", "-lcb-": "{", "-rcb-": "}",
          "-lsb-": "[", "-rsb-": "]", "``": '"', "''": '"'}
 
 
 def clean(x):
     return re.sub(
-            r"-lrb-|-rrb-|-lcb-|-rcb-|-lsb-|-rsb-|``|''",
-            lambda m: REMAP.get(m.group()), x)
+        r"-lrb-|-rrb-|-lcb-|-rcb-|-lsb-|-rsb-|``|''",
+        lambda m: REMAP.get(m.group()), x)
 
 
 class DirectoryProcessor:
@@ -105,7 +103,7 @@ class Rouge155(object):
 
     """
 
-    def __init__(self, rouge_dir=None, rouge_args=None, temp_dir = None):
+    def __init__(self, rouge_dir=None, rouge_args=None, temp_dir=None):
         """
         Create a Rouge155 object.
 
@@ -115,7 +113,7 @@ class Rouge155(object):
                         arguments.
 
         """
-        self.temp_dir=temp_dir
+        self.temp_dir = temp_dir
         self.log = log.get_global_console_logger()
         self.__set_dir_properties()
         self._config_file = None
@@ -302,7 +300,7 @@ class Rouge155(object):
             match = system_filename_pattern.match(system_filename)
             if match:
                 id = match.groups(0)[0]
-                model_filenames = [model_filename_pattern.replace('#ID#',id)]
+                model_filenames = [model_filename_pattern.replace('#ID#', id)]
                 # model_filenames = Rouge155.__get_model_filenames_for_id(
                 #     id, model_dir, model_filename_pattern)
                 system_models_tuples.append(
@@ -317,7 +315,6 @@ class Rouge155(object):
             f.write('<ROUGE-EVAL version="1.55">')
             for task_id, (system_filename, model_filenames) in enumerate(
                     system_models_tuples, start=1):
-
                 eval_string = Rouge155.__get_eval_string(
                     task_id, system_id,
                     system_dir, system_filename,
@@ -404,7 +401,7 @@ class Rouge155(object):
         processing.
 
         """
-        #0 ROUGE-1 Average_R: 0.02632 (95%-conf.int. 0.02632 - 0.02632)
+        # 0 ROUGE-1 Average_R: 0.02632 (95%-conf.int. 0.02632 - 0.02632)
         pattern = re.compile(
             r"(\d+) (ROUGE-\S+) (Average_\w): (\d.\d+) "
             r"\(95%-conf.int. (\d.\d+) - (\d.\d+)\)")
@@ -418,7 +415,7 @@ class Rouge155(object):
                     'Average_R': 'recall',
                     'Average_P': 'precision',
                     'Average_F': 'f_score'
-                    }[measure]
+                }[measure]
                 rouge_type = rouge_type.lower().replace("-", '_')
                 key = "{}_{}".format(rouge_type, measure)
                 results[key] = float(result)
@@ -560,11 +557,8 @@ class Rouge155(object):
                 '-n', 2,
                 # '-w', 1.2,
                 '-a',
-                ]
+            ]
             options = list(map(str, options))
-
-
-
 
         options = self.__add_config_option(options)
         return options
@@ -598,7 +592,7 @@ class Rouge155(object):
             ("data", "The path of the ROUGE 'data' directory."),
             ("system", "Path of the directory containing system summaries."),
             ("model", "Path of the directory containing model summaries."),
-            ]
+        ]
         for (dirname, docstring) in directories:
             self.__create_dir_property(dirname, docstring)
 

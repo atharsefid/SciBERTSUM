@@ -1,4 +1,3 @@
-import math
 import torch
 from torch.optim.optimizer import Optimizer
 
@@ -55,7 +54,6 @@ class Adam(Optimizer):
         loss = None
         if closure is not None:
             loss = closure()
-
 
         for group in self.param_groups:
             for p in group['params']:

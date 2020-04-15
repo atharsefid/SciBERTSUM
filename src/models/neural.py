@@ -1,7 +1,5 @@
 import math
 
-import torch
-import torch.nn as nn
 
 def aeq(*args):
     """
@@ -69,7 +67,7 @@ class GlobalAttention(nn.Module):
     All models compute the output as
     :math:`c = sum_{j=1}^{SeqLength} a_j H_j` where
     :math:`a_j` is the softmax of a score function.
-    Then then apply a projection layer to [q, c].
+    Then apply a projection layer to [q, c].
 
     However they
     differ on how they compute the attention score.
@@ -90,7 +88,7 @@ class GlobalAttention(nn.Module):
 
     """
 
-    def __init__(self, dim,  attn_type="dot"):
+    def __init__(self, dim, attn_type="dot"):
         super(GlobalAttention, self).__init__()
 
         self.dim = dim
@@ -108,9 +106,9 @@ class GlobalAttention(nn.Module):
         out_bias = self.attn_type == "mlp"
         self.linear_out = nn.Linear(dim * 2, dim, bias=out_bias)
 
-
     def score(self, h_t, h_s):
         """
+        calculates different attention mechanisms
         Args:
           h_t (`FloatTensor`): sequence of queries `[batch x tgt_len x dim]`
           h_s (`FloatTensor`): sequence of sources `[batch x src_len x dim]`
@@ -132,6 +130,7 @@ class GlobalAttention(nn.Module):
                 h_t_ = self.linear_in(h_t_)
                 h_t = h_t_.view(tgt_batch, tgt_len, tgt_dim)
             h_s_ = h_s.transpose(1, 2)
+            # bmm: batch matrix - matrix multiplication
             # (batch, t_len, d) x (batch, d, s_len) --> (batch, t_len, s_len)
             return torch.bmm(h_t, h_s_)
         else:
@@ -162,7 +161,7 @@ class GlobalAttention(nn.Module):
           (`FloatTensor`, `FloatTensor`):
 
           * Computed vector `[tgt_len x batch x dim]`
-          * Attention distribtutions for each query
+          * Attention distributions for each query
              `[tgt_len x batch x src_len]`
         """
 
@@ -180,8 +179,8 @@ class GlobalAttention(nn.Module):
         align = self.score(source, memory_bank)
 
         if memory_masks is not None:
-            memory_masks = memory_masks.transpose(0,1)
-            memory_masks = memory_masks.transpose(1,2)
+            memory_masks = memory_masks.transpose(0, 1)
+            memory_masks = memory_masks.transpose(1, 2)
             align.masked_fill_(1 - memory_masks.byte(), -float('inf'))
 
         if memory_lengths is not None:
@@ -189,13 +188,13 @@ class GlobalAttention(nn.Module):
             mask = mask.unsqueeze(1)  # Make it broadcastable.
             align.masked_fill_(1 - mask, -float('inf'))
 
-        align_vectors = F.softmax(align.view(batch*target_l, source_l), -1)
+        align_vectors = F.softmax(align.view(batch * target_l, source_l), -1)
         align_vectors = align_vectors.view(batch, target_l, source_l)
 
         c = torch.bmm(align_vectors, memory_bank)
 
         # concatenate
-        concat_c = torch.cat([c, source], 2).view(batch*target_l, dim*2)
+        concat_c = torch.cat([c, source], 2).view(batch * target_l, dim * 2)
         attn_h = self.linear_out(concat_c).view(batch, target_l, dim)
         if self.attn_type in ["general", "dot"]:
             attn_h = torch.tanh(attn_h)
@@ -203,8 +202,6 @@ class GlobalAttention(nn.Module):
         if one_step:
             attn_h = attn_h.squeeze(1)
             align_vectors = align_vectors.squeeze(1)
-
-
         else:
             attn_h = attn_h.transpose(0, 1).contiguous()
             align_vectors = align_vectors.transpose(0, 1).contiguous()
@@ -244,7 +241,7 @@ class MultiHeadedAttention(nn.Module):
     :cite:`DBLP:journals/corr/VaswaniSPUJGKP17`.
 
     Similar to standard `dot` attention but uses
-    multiple attention distributions simulataneously
+    multiple attention distributions simultaneously
     to select relevant items.
 
     .. mermaid::
@@ -296,7 +293,7 @@ class MultiHeadedAttention(nn.Module):
         self.softmax = nn.Softmax(dim=-1)
         self.dropout = nn.Dropout(dropout)
         self.use_final_linear = use_final_linear
-        if (self.use_final_linear):
+        if self.use_final_linear:
             self.final_linear = nn.Linear(model_dim, model_dim)
 
     def forward(self, key, value, query, mask=None,
@@ -375,6 +372,7 @@ class MultiHeadedAttention(nn.Module):
                             dim=2)
                     layer_cache["self_keys"] = key
                     layer_cache["self_values"] = value
+
             elif type == "context":
                 query = self.linear_query(query)
                 if layer_cache is not None:
@@ -417,14 +415,14 @@ class MultiHeadedAttention(nn.Module):
 
         attn = self.softmax(scores)
 
-        if (not predefined_graph_1 is None):
+        if not predefined_graph_1 is None:
             attn_masked = attn[:, -1] * predefined_graph_1
             attn_masked = attn_masked / (torch.sum(attn_masked, 2).unsqueeze(2) + 1e-9)
 
             attn = torch.cat([attn[:, :-1], attn_masked.unsqueeze(1)], 1)
 
         drop_attn = self.dropout(attn)
-        if (self.use_final_linear):
+        if self.use_final_linear:
             context = unshape(torch.matmul(drop_attn, value))
             output = self.final_linear(context)
             return output
@@ -441,7 +439,6 @@ class MultiHeadedAttention(nn.Module):
         # Return one attn
 
 
-
 class DecoderState(object):
     """Interface for grouping together the current state of a recurrent
     decoder. In the simplest case just represents the hidden state of
@@ -450,6 +447,7 @@ class DecoderState(object):
 
     Modules need to implement this to utilize beam search decoding.
     """
+
     def detach(self):
         """ Need to document this """
         self.hidden = tuple([_.detach() for _ in self.hidden])

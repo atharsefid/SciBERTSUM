@@ -4,7 +4,6 @@
 """
 from __future__ import division
 
-import argparse
 import glob
 import os
 import random
@@ -18,7 +17,7 @@ from models import data_loader, model_builder
 from models.data_loader import load_dataset
 from models.model_builder import ExtSummarizer
 from models.trainer_ext import build_trainer
-from others.logging import logger, init_logger
+from others.log import logger, init_logger
 
 model_flags = ['hidden_size', 'ff_size', 'heads', 'inter_layers', 'encoder', 'ff_actv', 'use_interval', 'rnn_size']
 
@@ -38,8 +37,7 @@ def train_multi_ext(args):
     procs = []
     for i in range(nb_gpu):
         device_id = i
-        procs.append(mp.Process(target=run, args=(args,
-                                                  device_id, error_queue,), daemon=True))
+        procs.append(mp.Process(target=run, args=(args, device_id, error_queue,), daemon=True))
         procs[i].start()
         logger.info(" Starting process pid: %d  " % procs[i].pid)
         error_handler.add_child(procs[i].pid)
@@ -52,13 +50,14 @@ def run(args, device_id, error_queue):
     setattr(args, 'gpu_ranks', [int(i) for i in args.gpu_ranks])
 
     try:
+        # what does multi init do???
         gpu_rank = distributed.multi_init(device_id, args.world_size, args.gpu_ranks)
         print('gpu_rank %d' % gpu_rank)
         if gpu_rank != args.gpu_ranks[device_id]:
-            raise AssertionError("An error occurred in \
-                  Distributed initialization")
+            raise AssertionError("An error occurred in Distributed initialization")
 
         train_single_ext(args, device_id)
+
     except KeyboardInterrupt:
         pass  # killed by parent, do nothing
     except Exception:
@@ -77,8 +76,7 @@ class ErrorHandler(object):
         import threading
         self.error_queue = error_queue
         self.children_pids = []
-        self.error_thread = threading.Thread(
-            target=self.error_listener, daemon=True)
+        self.error_thread = threading.Thread(target=self.error_listener, daemon=True)
         self.error_thread.start()
         signal.signal(signal.SIGUSR1, self.signal_handler)
 
@@ -105,7 +103,7 @@ class ErrorHandler(object):
 
 def validate_ext(args, device_id):
     timestep = 0
-    if (args.test_all):
+    if args.test_all:
         cp_files = sorted(glob.glob(os.path.join(args.model_path, 'model_step_*.pt')))
         cp_files.sort(key=os.path.getmtime)
         xent_lst = []
@@ -114,7 +112,7 @@ def validate_ext(args, device_id):
             xent = validate(args, device_id, cp, step)
             xent_lst.append((xent, cp))
             max_step = xent_lst.index(min(xent_lst))
-            if (i - max_step > 10):
+            if i - max_step > 10:
                 break
         xent_lst = sorted(xent_lst, key=lambda x: x[0])[:3]
         logger.info('PPL %s' % str(xent_lst))
@@ -122,16 +120,16 @@ def validate_ext(args, device_id):
             step = int(cp.split('.')[-2].split('_')[-1])
             test_ext(args, device_id, cp, step)
     else:
-        while (True):
+        while True:
             cp_files = sorted(glob.glob(os.path.join(args.model_path, 'model_step_*.pt')))
             cp_files.sort(key=os.path.getmtime)
-            if (cp_files):
+            if cp_files:
                 cp = cp_files[-1]
                 time_of_cp = os.path.getmtime(cp)
-                if (not os.path.getsize(cp) > 0):
+                if not os.path.getsize(cp) > 0:
                     time.sleep(60)
                     continue
-                if (time_of_cp > timestep):
+                if time_of_cp > timestep:
                     timestep = time_of_cp
                     step = int(cp.split('.')[-2].split('_')[-1])
                     validate(args, device_id, cp, step)
@@ -139,10 +137,10 @@ def validate_ext(args, device_id):
 
             cp_files = sorted(glob.glob(os.path.join(args.model_path, 'model_step_*.pt')))
             cp_files.sort(key=os.path.getmtime)
-            if (cp_files):
+            if cp_files:
                 cp = cp_files[-1]
                 time_of_cp = os.path.getmtime(cp)
-                if (time_of_cp > timestep):
+                if time_of_cp > timestep:
                     continue
             else:
                 time.sleep(300)
@@ -158,7 +156,7 @@ def validate(args, device_id, pt, step):
     checkpoint = torch.load(test_from, map_location=lambda storage, loc: storage)
     opt = vars(checkpoint['opt'])
     for k in opt.keys():
-        if (k in model_flags):
+        if k in model_flags:
             setattr(args, k, opt[k])
     print(args)
 
@@ -175,7 +173,7 @@ def validate(args, device_id, pt, step):
 
 def test_ext(args, device_id, pt, step):
     device = "cpu" if args.visible_gpus == '-1' else "cuda"
-    if (pt != ''):
+    if pt != '':
         test_from = pt
     else:
         test_from = args.test_from
@@ -183,7 +181,7 @@ def test_ext(args, device_id, pt, step):
     checkpoint = torch.load(test_from, map_location=lambda storage, loc: storage)
     opt = vars(checkpoint['opt'])
     for k in opt.keys():
-        if (k in model_flags):
+        if k in model_flags:
             setattr(args, k, opt[k])
     print(args)
 
@@ -196,8 +194,9 @@ def test_ext(args, device_id, pt, step):
     trainer = build_trainer(args, device_id, model, None)
     trainer.test(test_iter, step)
 
+
 def train_ext(args, device_id):
-    if (args.world_size > 1):
+    if args.world_size > 1:
         train_multi_ext(args)
     else:
         train_single_ext(args, device_id)
@@ -227,7 +226,7 @@ def train_single_ext(args, device_id):
                                 map_location=lambda storage, loc: storage)
         opt = vars(checkpoint['opt'])
         for k in opt.keys():
-            if (k in model_flags):
+            if k in model_flags:
                 setattr(args, k, opt[k])
     else:
         checkpoint = None

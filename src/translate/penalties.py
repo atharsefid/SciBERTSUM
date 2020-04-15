@@ -1,5 +1,4 @@
 from __future__ import division
-import torch
 
 
 class PenaltyBuilder(object):
@@ -11,7 +10,7 @@ class PenaltyBuilder(object):
         cov_pen (str): option name of cov pen
     """
 
-    def __init__(self,  length_pen):
+    def __init__(self, length_pen):
         self.length_pen = length_pen
 
     def length_penalty(self):
@@ -25,7 +24,6 @@ class PenaltyBuilder(object):
     """
     Below are all the different penalty terms implemented so far
     """
-
 
     def length_wu(self, beam, logprobs, alpha=0.):
         """
