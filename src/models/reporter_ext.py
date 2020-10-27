@@ -5,7 +5,7 @@ import sys
 import time
 from datetime import datetime
 
-from others.logging import logger
+from others.log import logger
 
 
 def build_report_manager(opt):
@@ -175,11 +175,11 @@ class Statistics(object):
     @staticmethod
     def all_gather_stats(stat, max_size=4096):
         """
-        Gather a `Statistics` object accross multiple process/nodes
+        Gather a `Statistics` object across multiple process/nodes
 
         Args:
             stat(:obj:Statistics): the statistics object to gather
-                accross all processes/nodes
+                across all processes/nodes
             max_size(int): max buffer size to use
 
         Returns:
@@ -191,11 +191,11 @@ class Statistics(object):
     @staticmethod
     def all_gather_stats_list(stat_list, max_size=4096):
         """
-        Gather a `Statistics` list accross all processes/nodes
+        Gather a `Statistics` list across all processes/nodes
 
         Args:
             stat_list(list([`Statistics`])): list of statistics objects to
-                gather accross all processes/nodes
+                gather across all processes/nodes
             max_size(int): max buffer size to use
 
         Returns:
@@ -218,7 +218,7 @@ class Statistics(object):
 
     def update(self, stat, update_n_src_words=False):
         """
-        Update statistics by suming values with another `Statistics` object
+        Update statistics by summing values with another `Statistics` object
 
         Args:
             stat: another statistic object
@@ -227,12 +227,11 @@ class Statistics(object):
 
         """
         self.loss += stat.loss
-
         self.n_docs += stat.n_docs
 
     def xent(self):
         """ compute cross entropy """
-        if (self.n_docs == 0):
+        if self.n_docs == 0:
             return 0
         return self.loss / self.n_docs
 

@@ -3,7 +3,7 @@ import re
 import shutil
 import time
 
-from others import pyrouge
+from pyrouge import Rouge155
 
 REMAP = {"-lrb-": "(", "-rrb-": ")", "-lcb-": "{", "-rcb-": "}",
          "-lsb-": "[", "-rsb-": "]", "``": '"', "''": '"'}
@@ -26,7 +26,6 @@ def process(params):
         os.mkdir(tmp_dir + "/candidate")
         os.mkdir(tmp_dir + "/reference")
     try:
-
         for i in range(cnt):
             if len(references[i]) < 1:
                 continue
@@ -36,7 +35,7 @@ def process(params):
             with open(tmp_dir + "/reference/ref.{}.txt".format(i), "w",
                       encoding="utf-8") as f:
                 f.write(references[i])
-        r = pyrouge.Rouge155(temp_dir=temp_dir)
+        r = Rouge155()  # temp_dir=temp_dir)
         r.model_dir = tmp_dir + "/reference/"
         r.system_dir = tmp_dir + "/candidate/"
         r.model_filename_pattern = 'ref.#ID#.txt'
@@ -54,6 +53,7 @@ def process(params):
 def test_rouge(temp_dir, cand, ref):
     candidates = [line.strip() for line in open(cand, encoding='utf-8')]
     references = [line.strip() for line in open(ref, encoding='utf-8')]
+    print('*' * 50)
     print(len(candidates))
     print(len(references))
     assert len(candidates) == len(references)
@@ -66,7 +66,6 @@ def test_rouge(temp_dir, cand, ref):
         os.mkdir(tmp_dir + "/candidate")
         os.mkdir(tmp_dir + "/reference")
     try:
-
         for i in range(cnt):
             if len(references[i]) < 1:
                 continue
@@ -76,7 +75,7 @@ def test_rouge(temp_dir, cand, ref):
             with open(tmp_dir + "/reference/ref.{}.txt".format(i), "w",
                       encoding="utf-8") as f:
                 f.write(references[i])
-        r = pyrouge.Rouge155(temp_dir=temp_dir)
+        r = Rouge155()  # temp_dir=temp_dir)
         r.model_dir = tmp_dir + "/reference/"
         r.system_dir = tmp_dir + "/candidate/"
         r.model_filename_pattern = 'ref.#ID#.txt'
@@ -86,10 +85,12 @@ def test_rouge(temp_dir, cand, ref):
         results_dict = r.output_to_dict(rouge_results)
     finally:
         pass
-        if os.path.isdir(tmp_dir):
-            shutil.rmtree(tmp_dir)
+        # if os.path.isdir(tmp_dir):
+        #     shutil.rmtree(tmp_dir)
     return results_dict
 
+
+# test_rouge('../../temp', 'a.txt', 'b.txt')
 
 def tile(x, count, dim=0):
     """
@@ -103,14 +104,15 @@ def tile(x, count, dim=0):
     out_size[0] *= count
     batch = x.size(0)
     x = x.view(batch, -1) \
-         .transpose(0, 1) \
-         .repeat(count, 1) \
-         .transpose(0, 1) \
-         .contiguous() \
-         .view(*out_size)
+        .transpose(0, 1) \
+        .repeat(count, 1) \
+        .transpose(0, 1) \
+        .contiguous() \
+        .view(*out_size)
     if dim != 0:
         x = x.permute(perm).contiguous()
     return x
+
 
 def rouge_results_to_str(results_dict):
     return ">> ROUGE-F(1/2/3/l): {:.2f}/{:.2f}/{:.2f}\nROUGE-R(1/2/3/l): {:.2f}/{:.2f}/{:.2f}\n".format(

@@ -6,7 +6,7 @@ from tensorboardX import SummaryWriter
 
 import distributed
 from models.reporter_ext import ReportMgr, Statistics
-from others.logging import logger
+from others.log import logger
 from others.utils import test_rouge, rouge_results_to_str
 
 
@@ -49,7 +49,7 @@ def build_trainer(args, device_id, model, optim):
     trainer = Trainer(args, model, optim, grad_accum_count, n_gpu, gpu_rank, report_manager)
 
     # print(tr)
-    if (model):
+    if model:
         n_params = _tally_parameters(model)
         logger.info('* number of parameters: %d' % n_params)
 
@@ -63,22 +63,12 @@ class Trainer(object):
     Args:
             model(:py:class:`onmt.models.model.NMTModel`): translation model
                 to train
-            train_loss(:obj:`onmt.utils.loss.LossComputeBase`):
-               training loss computation
-            valid_loss(:obj:`onmt.utils.loss.LossComputeBase`):
-               training loss computation
             optim(:obj:`onmt.utils.optimizers.Optimizer`):
                the optimizer responsible for update
-            trunc_size(int): length of truncated back propagation through time
-            shard_size(int): compute loss in shards of this size for efficiency
-            data_type(string): type of the source input: [text|img|audio]
-            norm_method(string): normalization methods: [sents|tokens]
             grad_accum_count(int): accumulate gradients this many times.
             report_manager(:obj:`onmt.utils.ReportMgrBase`):
                 the object that creates reports, or None
-            model_saver(:obj:`onmt.models.ModelSaverBase`): the saver is
-                used to save a checkpoint.
-                Thus nothing will be saved if this parameter is None
+
     """
 
     def __init__(self, args, model, optim,
@@ -97,7 +87,7 @@ class Trainer(object):
         self.loss = torch.nn.BCELoss(reduction='none')
         assert grad_accum_count > 0
         # Set model in training mode.
-        if (model):
+        if model:
             self.model.train()
 
     def train(self, train_iter_fct, train_steps, valid_iter_fct=None, valid_steps=-1):
@@ -113,14 +103,12 @@ class Trainer(object):
             valid_iter_fct(function): same as train_iter_fct, for valid data
             train_steps(int):
             valid_steps(int):
-            save_checkpoint_steps(int):
 
         Return:
             None
         """
         logger.info('Start training...')
 
-        # step =  self.optim._step + 1
         step = self.optim._step + 1
         true_batchs = []
         accum = 0
@@ -140,6 +128,7 @@ class Trainer(object):
                     true_batchs.append(batch)
                     normalization += batch.batch_size
                     accum += 1
+                    # it keeps accumulating the gradients until reach a limit
                     if accum == self.grad_accum_count:
                         reduce_counter += 1
                         if self.n_gpu > 1:
@@ -159,7 +148,7 @@ class Trainer(object):
                         true_batchs = []
                         accum = 0
                         normalization = 0
-                        if (step % self.save_checkpoint_steps == 0 and self.gpu_rank == 0):
+                        if step % self.save_checkpoint_steps == 0 and self.gpu_rank == 0:  # save in the master GPU only
                             self._save(step)
 
                         step += 1
@@ -198,13 +187,12 @@ class Trainer(object):
             return stats
 
     def test(self, test_iter, step, cal_lead=False, cal_oracle=False):
-        """ Validate model.
-            valid_iter: validate data iterator
+        """ test model.
+            test_iter: test data iterator
         Returns:
-            :obj:`nmt.Statistics`: validation loss statistics
+            :obj:`nmt.Statistics`: test loss statistics
         """
 
-        # Set model in validating mode.
         def _get_ngrams(n, text):
             ngram_set = set()
             text_length = len(text)
@@ -213,7 +201,7 @@ class Trainer(object):
                 ngram_set.add(tuple(text[i:i + n]))
             return ngram_set
 
-        def _block_tri(c, p):
+        def _block_tri(c, p):  # p is the set of previously selected sentences
             tri_c = _get_ngrams(3, c.split())
             for s in p:
                 tri_s = _get_ngrams(3, s.split())
@@ -221,7 +209,8 @@ class Trainer(object):
                     return True
             return False
 
-        if (not cal_lead and not cal_oracle):
+        # Set model in validating mode.
+        if not cal_lead and not cal_oracle:
             self.model.eval()
         stats = Statistics()
 
@@ -230,7 +219,7 @@ class Trainer(object):
         with open(can_path, 'w') as save_pred:
             with open(gold_path, 'w') as save_gold:
                 with torch.no_grad():
-                    for batch in test_iter:
+                    for batch in test_iter: # each batch has one document
                         src = batch.src
                         labels = batch.src_sent_labels
                         segs = batch.segs
@@ -241,14 +230,15 @@ class Trainer(object):
                         gold = []
                         pred = []
 
-                        if (cal_lead):
+                        if cal_lead:
                             selected_ids = [list(range(batch.clss.size(1)))] * batch.batch_size
-                        elif (cal_oracle):
+                        elif cal_oracle:
                             selected_ids = [[j for j in range(batch.clss.size(1)) if labels[i][j] == 1] for i in
                                             range(batch.batch_size)]
                         else:
+                            # sent_scores = [#ofDocs, numberOfsents]
                             sent_scores, mask = self.model(src, segs, clss, mask, mask_cls)
-
+                            print('sent scores: ', sent_scores.size(), src.size(), labels.size(), mask.size())
                             loss = self.loss(sent_scores, labels.float())
                             loss = (loss * mask.float()).sum()
                             batch_stats = Statistics(float(loss.cpu().data.numpy()), len(labels))
@@ -258,39 +248,48 @@ class Trainer(object):
                             sent_scores = sent_scores.cpu().data.numpy()
                             selected_ids = np.argsort(-sent_scores, 1)
                         # selected_ids = np.sort(selected_ids,1)
+                        # i is the document number in the batch
                         for i, idx in enumerate(selected_ids):
                             _pred = []
-                            if (len(batch.src_str[i]) == 0):
+                            if len(batch.src_str[i]) == 0:
                                 continue
-                            for j in selected_ids[i][:len(batch.src_str[i])]:
-                                if (j >= len(batch.src_str[i])):
+                            # give candidates that don't have tri-gram overlap
+                            # batch.src_str[i] is the list of sents in doc i
+                            # batch.src_str[i][j] is the jth sentence in i document of the batch
+                            for j in selected_ids[i]:  # [:len(batch.src_str[i])]:
+                                sents_count = len(batch.src_str[i])
+                                max_sents = int(0.2 * sents_count)
+                                if j >= len(
+                                        batch.src_str[i]):  # checks if id of the selected sent is less than size of doc
                                     continue
                                 candidate = batch.src_str[i][j].strip()
-                                if (self.args.block_trigram):
-                                    if (not _block_tri(candidate, _pred)):
-                                        _pred.append(candidate)
-                                else:
-                                    _pred.append(candidate)
+                                # FIXXXXX
+                                # if self.args.block_trigram:
+                                #     if not _block_tri(candidate, _pred):
+                                #         _pred.append(candidate)
+                                # else:
+                                _pred.append(candidate)
 
-                                if ((not cal_oracle) and (not self.args.recall_eval) and len(_pred) == 3):
-                                    break
-
-                            _pred = '<q>'.join(_pred)
-                            if (self.args.recall_eval):
-                                _pred = ' '.join(_pred.split()[:len(batch.tgt_str[i].split())])
+                                if (not cal_oracle) and (not self.args.recall_eval) and len(_pred) >= max_sents:
+                                   break
+                            print('number of sentences: {}, # of selected sents: {}, # of sentences selected after 3 gram blocking: {}'.format(len(batch.src_str[i]), len(selected_ids[i]), len(_pred)))
+                            _pred = ' '.join(_pred)
+                            # if self.args.recall_eval:
+                            #     print('This part limits the size of the predicted summary to the size of the gold summary')
+                            #     _pred = ' '.join(_pred.split()[:len(batch.tgt_str[i].split())])
 
                             pred.append(_pred)
                             gold.append(batch.tgt_str[i])
-
                         for i in range(len(gold)):
                             save_gold.write(gold[i].strip() + '\n')
                         for i in range(len(pred)):
                             save_pred.write(pred[i].strip() + '\n')
-        if (step != -1 and self.args.report_rouge):
+
+        if step != -1 and self.args.report_rouge:
             rouges = test_rouge(self.args.temp_dir, can_path, gold_path)
+            logger.info('temp_dir is: {}'.format(self.args.temp_dir))
             logger.info('Rouges at step %d \n%s' % (step, rouge_results_to_str(rouges)))
         self._report_step(0, step, valid_stats=stats)
-
         return stats
 
     def _gradient_accumulation(self, true_batchs, normalization, total_stats,
@@ -301,9 +300,10 @@ class Trainer(object):
         for batch in true_batchs:
             if self.grad_accum_count == 1:
                 self.model.zero_grad()
-
+            # each batch is a 1024 tokens and the sentences that fit in the this length
             src = batch.src
             labels = batch.src_sent_labels
+            # print('---- labels:::::', src.shape, labels.shape, labels)
             segs = batch.segs
             clss = batch.clss
             mask = batch.mask_src
@@ -328,8 +328,7 @@ class Trainer(object):
                     grads = [p.grad.data for p in self.model.parameters()
                              if p.requires_grad
                              and p.grad is not None]
-                    distributed.all_reduce_and_rescale_tensors(
-                        grads, float(1))
+                    distributed.all_reduce_and_rescale_tensors(grads, float(1))
                 self.optim.step()
 
         # in case of multi step gradient accumulation,
@@ -339,8 +338,7 @@ class Trainer(object):
                 grads = [p.grad.data for p in self.model.parameters()
                          if p.requires_grad
                          and p.grad is not None]
-                distributed.all_reduce_and_rescale_tensors(
-                    grads, float(1))
+                distributed.all_reduce_and_rescale_tensors(grads, float(1))
             self.optim.step()
 
     def _save(self, step):
@@ -360,7 +358,7 @@ class Trainer(object):
         checkpoint_path = os.path.join(self.args.model_path, 'model_step_%d.pt' % step)
         logger.info("Saving checkpoint %s" % checkpoint_path)
         # checkpoint_path = '%s_step_%d.pt' % (FLAGS.model_path, step)
-        if (not os.path.exists(checkpoint_path)):
+        if not os.path.exists(checkpoint_path):
             torch.save(checkpoint, checkpoint_path)
             return checkpoint, checkpoint_path
 
@@ -415,5 +413,5 @@ class Trainer(object):
         """
         Save the model if a model saver is set
         """
-        if self.model_saver is not None:
+        if self.model_saver:
             self.model_saver.maybe_save(step)
