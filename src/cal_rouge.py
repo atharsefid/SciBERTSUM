@@ -4,11 +4,8 @@ import os
 import shutil
 import sys
 import time
-# from multiprocess import Pool as Pool2
 from multiprocessing import Pool
-
-# from onmt.utils.logging import init_logger, logger
-from others import pyrouge
+import pyrouge
 
 
 def process(data):

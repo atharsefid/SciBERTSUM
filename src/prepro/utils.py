@@ -1,7 +1,3 @@
-# stopwords = pkgutil.get_data(__package__, 'smart_common_words.txt')
-# stopwords = stopwords.decode('ascii').split('\n')
-# stopwords = {key.strip(): 1 for key in stopwords}
-
 
 def _get_ngrams(n, text):
     """Calcualtes n-grams.

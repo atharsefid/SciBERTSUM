@@ -11,7 +11,7 @@ from others.log import init_logger
 from train_extractive import train_ext, validate_ext, test_ext
 
 model_flags = ['hidden_size', 'ff_size', 'heads', 'emb_size', 'enc_layers', 'enc_hidden_size', 'enc_ff_size',
-               'dec_layers', 'dec_hidden_size', 'dec_ff_size', 'encoder', 'ff_actv', 'use_interval']
+               'encoder', 'ff_actv', 'use_interval']
 
 
 def str2bool(v):
@@ -25,7 +25,6 @@ def str2bool(v):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument("-task", default='ext', type=str, choices=['ext'])
     parser.add_argument("-encoder", default='bert', type=str, choices=['bert', 'baseline'])
     parser.add_argument("-mode", default='train', type=str, choices=['train', 'validate', 'test'])
     parser.add_argument("-bert_data_path", default='../bert_data')
@@ -36,23 +35,13 @@ if __name__ == '__main__':
     parser.add_argument("-batch_size", default=1, type=int)
     parser.add_argument("-test_batch_size", default=1, type=int)
 
-    parser.add_argument("-max_pos", default=15000, type=int)
+    parser.add_argument("-max_pos", default=15000, type=int)  ####
     parser.add_argument("-use_interval", type=str2bool, nargs='?', const=True, default=True)
     parser.add_argument("-large", type=str2bool, nargs='?', const=True, default=False)
-    parser.add_argument("-load_from_extractive", default='', type=str)
 
     parser.add_argument("-sep_optim", type=str2bool, nargs='?', const=True, default=True)
-    parser.add_argument("-lr_bert", default=2e-3, type=float)
-    parser.add_argument("-lr_dec", default=2e-3, type=float)
-    parser.add_argument("-use_bert_emb", type=str2bool, nargs='?', const=True, default=False)
 
-    parser.add_argument("-share_emb", type=str2bool, nargs='?', const=True, default=False)
     parser.add_argument("-finetune_bert", type=str2bool, nargs='?', const=True, default=False)
-    parser.add_argument("-dec_dropout", default=0.2, type=float)
-    parser.add_argument("-dec_layers", default=6, type=int)
-    parser.add_argument("-dec_hidden_size", default=768, type=int)
-    parser.add_argument("-dec_heads", default=8, type=int)
-    parser.add_argument("-dec_ff_size", default=2048, type=int)
     parser.add_argument("-enc_hidden_size", default=512, type=int)
     parser.add_argument("-enc_ff_size", default=512, type=int)
     parser.add_argument("-enc_dropout", default=0.2, type=float)
@@ -79,7 +68,6 @@ if __name__ == '__main__':
     parser.add_argument("-beta2", default=0.999, type=float)
     parser.add_argument("-warmup_steps", default=8000, type=int)
     parser.add_argument("-warmup_steps_bert", default=8000, type=int)
-    parser.add_argument("-warmup_steps_dec", default=8000, type=int)
     parser.add_argument("-max_grad_norm", default=0, type=float)
 
     parser.add_argument("-save_checkpoint_steps", default=5, type=int)
@@ -110,16 +98,15 @@ if __name__ == '__main__':
     device = "cpu" if args.visible_gpus == '-1' else "cuda"
     device_id = 0 if device == "cuda" else -1
 
-    if args.task == 'ext':
-        if args.mode == 'train':
-            train_ext(args, device_id)
-        elif args.mode == 'validate':
-            validate_ext(args, device_id)
-        if args.mode == 'test':
-            cp = args.test_from
-            try:
-                step = int(cp.split('.')[-2].split('_')[-1])
-            except:
-                step = 0
-            test_ext(args, device_id, cp, step)
+    if args.mode == 'train':
+        train_ext(args, device_id)
+    elif args.mode == 'validate':
+        validate_ext(args, device_id)
+    if args.mode == 'test':
+        cp = args.test_from
+        try:
+            step = int(cp.split('.')[-2].split('_')[-1])
+        except:
+            step = 0
+        test_ext(args, device_id, cp, step)
 

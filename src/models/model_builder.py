@@ -37,79 +37,6 @@ def build_optim(args, model, checkpoint):
     return optim
 
 
-def build_optim_bert(args, model, checkpoint):
-    """ Build optimizer """
-
-    if checkpoint is not None:
-        optim = checkpoint['optims'][0]
-        saved_optimizer_state_dict = optim.optimizer.state_dict()
-        optim.optimizer.load_state_dict(saved_optimizer_state_dict)
-        if args.visible_gpus != '-1':
-            for state in optim.optimizer.state.values():
-                for k, v in state.items():
-                    if torch.is_tensor(v):
-                        state[k] = v.cuda()
-
-        if (optim.method == 'adam') and (len(optim.optimizer.state) < 1):
-            raise RuntimeError(
-                "Error: loaded Adam optimizer from existing model" +
-                " but optimizer state is empty")
-
-    else:
-        optim = Optimizer(
-            args.optim, args.lr_bert, args.max_grad_norm,
-            beta1=args.beta1, beta2=args.beta2,
-            decay_method='noam',
-            warmup_steps=args.warmup_steps_bert)
-
-    params = [(n, p) for n, p in list(model.named_parameters()) if n.startswith('bert.model')]
-    optim.set_parameters(params)
-
-    return optim
-
-
-def build_optim_dec(args, model, checkpoint):
-    """ Build optimizer """
-
-    if checkpoint is not None:
-        optim = checkpoint['optims'][1]
-        saved_optimizer_state_dict = optim.optimizer.state_dict()
-        optim.optimizer.load_state_dict(saved_optimizer_state_dict)
-        if args.visible_gpus != '-1':
-            for state in optim.optimizer.state.values():
-                for k, v in state.items():
-                    if torch.is_tensor(v):
-                        state[k] = v.cuda()
-
-        if (optim.method == 'adam') and (len(optim.optimizer.state) < 1):
-            raise RuntimeError(
-                "Error: loaded Adam optimizer from existing model" +
-                " but optimizer state is empty")
-
-    else:
-        optim = Optimizer(
-            args.optim, args.lr_dec, args.max_grad_norm,
-            beta1=args.beta1, beta2=args.beta2,
-            decay_method='noam',
-            warmup_steps=args.warmup_steps_dec)
-
-    params = [(n, p) for n, p in list(model.named_parameters()) if not n.startswith('bert.model')]
-    optim.set_parameters(params)
-
-    return optim
-
-
-def get_generator(vocab_size, dec_hidden_size, device):
-    gen_func = nn.LogSoftmax(dim=-1)
-    generator = nn.Sequential(
-        nn.Linear(dec_hidden_size, vocab_size),
-        gen_func
-    )
-    generator.to(device)
-
-    return generator
-
-
 class Bert(nn.Module):
     def __init__(self, large, temp_dir, finetune=False):
         super(Bert, self).__init__()
@@ -154,7 +81,7 @@ class ExtSummarizer(nn.Module):
                                                   :].repeat(self.doc_len - 512, 1)
             self.bert.model.embeddings.position_embeddings = my_pos_embeddings
 
-        if checkpoint is not None:
+        if checkpoint:
             self.load_state_dict(checkpoint['model'], strict=True)
         else:
             if args.param_init != 0.0:
