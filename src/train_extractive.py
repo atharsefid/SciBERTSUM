@@ -211,7 +211,7 @@ def train_single_ext(args, device_id):
     torch.manual_seed(args.seed)
     random.seed(args.seed)
     torch.backends.cudnn.deterministic = True
-
+    print('device_id is ', device_id)
     if device_id >= 0:
         torch.cuda.set_device(device_id)
         torch.cuda.manual_seed(args.seed)

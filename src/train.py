@@ -35,7 +35,7 @@ if __name__ == '__main__':
     parser.add_argument("-batch_size", default=1, type=int)
     parser.add_argument("-test_batch_size", default=1, type=int)
 
-    parser.add_argument("-max_pos", default=15000, type=int)  ####
+    parser.add_argument("-max_pos", default=1024, type=int)  # This is the maximum size of the document.
     parser.add_argument("-use_interval", type=str2bool, nargs='?', const=True, default=True)
     parser.add_argument("-large", type=str2bool, nargs='?', const=True, default=False)
 
@@ -97,7 +97,7 @@ if __name__ == '__main__':
     init_logger(args.log_file)
     device = "cpu" if args.visible_gpus == '-1' else "cuda"
     device_id = 0 if device == "cuda" else -1
-
+    device_id = -1  # fix
     if args.mode == 'train':
         train_ext(args, device_id)
     elif args.mode == 'validate':

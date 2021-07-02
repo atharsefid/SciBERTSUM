@@ -64,7 +64,7 @@ class ExtSummarizer(nn.Module):
         self.device = device
         self.sent_process_count = 20
         self.bert = Bert(args.large, args.temp_dir, args.finetune_bert)
-        self.doc_len = 1024
+        self.doc_len = args.max_pos
         self.ext_layer = ExtTransformerEncoder(self.bert.model.config.hidden_size, args.ext_ff_size, args.ext_heads,
                                                args.ext_dropout, args.ext_layers)
         if args.encoder == 'baseline':
@@ -91,17 +91,17 @@ class ExtSummarizer(nn.Module):
                 for p in self.ext_layer.parameters():
                     if p.dim() > 1:
                         xavier_uniform_(p)
-
+        print('device is::::   ', device)
         self.to(device)
 
     def forward(self, src, segs, clss, mask_src, mask_cls):
-        # print('-'*200)
-        # # batch size must be 1
-        # print('src:', src.shape)
-        # print('segs:', segs.shape)
-        # print('clss:', clss.shape)
-        # print('mask_src:', mask_src.shape)
-        # print('mask_cls:', mask_cls.shape)
+        print('-'*200)
+        # batch size must be 1
+        print('src:', src.shape)
+        print('segs:', segs.shape)
+        print('clss:', clss.shape)
+        print('mask_src:', mask_src.shape)
+        print('mask_cls:', mask_cls.shape)
 
         top_vec = self.bert(src, segs, mask_src)
         sents_vec = top_vec[torch.arange(top_vec.size(0)).unsqueeze(1), clss]
