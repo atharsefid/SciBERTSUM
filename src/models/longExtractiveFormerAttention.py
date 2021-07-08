@@ -1,5 +1,5 @@
 import math
-from dataclasses import dataclass
+
 from typing import Optional, Tuple
 
 import torch
@@ -7,6 +7,10 @@ import torch.nn as nn
 import torch.utils.checkpoint
 from torch.nn import CrossEntropyLoss, MSELoss
 from torch.nn import functional as F
+
+from pytorch_transformers import BertModel, BertConfig
+from typing import Union, List
+
 
 
 class LongformerEmbeddings(nn.Module):
@@ -166,6 +170,7 @@ class LongformerSelfAttention(nn.Module):
         float_mask = remove_from_windowed_attention_mask.type_as(query_vectors).masked_fill(
             remove_from_windowed_attention_mask, -10000.0
         )  # this tensor will have value -10000 in global and masked indices
+        print('float_mask shape', float_mask.shape, attention_mask.shape)
         # diagonal mask with zeros everywhere and -inf inplace of padding
         diagonal_mask = self._sliding_chunks_query_key_matmul(
             float_mask.new_ones(size=float_mask.size()), float_mask, self.one_sided_attn_window_size
@@ -665,7 +670,7 @@ class LongformerSelfOutput(nn.Module):
         return hidden_states
 
 
-class LongformerAttention(nn.Module):
+class LongFormerAttention(nn.Module):
     def __init__(self, config, layer_id=0):
         super().__init__()
         self.self = LongformerSelfAttention(config, layer_id)

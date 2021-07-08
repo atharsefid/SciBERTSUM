@@ -176,8 +176,9 @@ class Trainer(object):
                 clss = batch.clss
                 mask = batch.mask_src
                 mask_cls = batch.mask_cls
-
-                sent_scores, mask = self.model(src, segs, clss, mask, mask_cls)
+                sections = batch.sections
+                token_sections = batch.token_sections
+                sent_scores, mask = self.model(src, sections, token_sections, segs, clss, mask, mask_cls)
 
                 loss = self.loss(sent_scores, labels.float())
                 loss = (loss * mask.float()).sum()
@@ -226,6 +227,8 @@ class Trainer(object):
                         clss = batch.clss
                         mask = batch.mask_src
                         mask_cls = batch.mask_cls
+                        sections = batch.sections
+                        token_sections = batch.token_sections
 
                         gold = []
                         pred = []
@@ -237,7 +240,7 @@ class Trainer(object):
                                             range(batch.batch_size)]
                         else:
                             # sent_scores = [#ofDocs, numberOfsents]
-                            sent_scores, mask = self.model(src, segs, clss, mask, mask_cls)
+                            sent_scores, mask = self.model(src, sections, token_sections, segs, clss, mask, mask_cls)
                             print('sent scores: ', sent_scores.size(), src.size(), labels.size(), mask.size())
                             loss = self.loss(sent_scores, labels.float())
                             loss = (loss * mask.float()).sum()
@@ -308,9 +311,13 @@ class Trainer(object):
             clss = batch.clss
             mask = batch.mask_src
             mask_cls = batch.mask_cls
+            sections = batch.sections
+            token_sections = batch.token_sections
 
-            sent_scores, mask = self.model(src, segs, clss, mask, mask_cls)
-
+            batch_size, sent_count = mask_cls.shape
+            sent_scores, mask = self.model(src, sections, token_sections, segs, clss, mask, mask_cls)
+            sent_scores = sent_scores[:, :sent_count]  # remove padded items from returned scores
+            mask = mask[:, :sent_count]  # remove padded items from returned masks
             loss = self.loss(sent_scores, labels.float())
             loss = (loss * mask.float()).sum()
             (loss / loss.numel()).backward()

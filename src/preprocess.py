@@ -88,3 +88,8 @@ if __name__ == '__main__':
 # 6000 tokens: 124727297
 # 7000 tokens: 124727297
 # 9000 tokens: 127031297 could not fit in memory
+
+# python preprocess.py -mode tokenize -raw_path ../raw_stories -save_path ../merged_stories_tokenized
+# python preprocess.py -mode format_to_lines -raw_path ../merged_stories_tokenized -save_path ../json_data/cnndm -n_cpus 1 -use_bert_basic_tokenizer false -map_path ../urls
+# python preprocess.py -mode format_to_bert -raw_path ../json_data -save_path ../bert_data  -lower -n_cpus 4 -log_file ../logs/preprocess.log
+# python train.py -mode train -bert_data_path ../bert_data -ext_dropout 0.1 -model_path ../models -lr 2e-3 -visible_gpus -1 -report_every 50 -save_checkpoint_steps 1000 -batch_size 1 -train_steps 50000 -accum_count 2 -log_file ../logs/ext_bert_cnndm -use_interval true -warmup_steps 10000 -max_pos 512

@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 
 from models.neural import MultiHeadedAttention, PositionwiseFeedForward
-from models.longFormerAttn import *
+from models.longExtractiveFormerAttention import *
 
 
 class Classifier(nn.Module):

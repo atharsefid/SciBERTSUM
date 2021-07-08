@@ -49,11 +49,16 @@ def load_pdf_ppt_jsons(pdf_ppt_jsons, lower=True, extractive=True):
 def load_json(p, lower):
     source = []
     tgt = []
+    sentence_sections = []
     flag = False
+    section = 0
     for sent in json.load(open(p))['sentences']:
         tokens = [t['word'] for t in sent['tokens']]
+        tokens_after = [t['after'] for t in sent['tokens']]
+
         if lower:
             tokens = [t.lower() for t in tokens]
+
         if tokens[0] == '@highlight':
             flag = True
             tgt.append([])
@@ -62,10 +67,13 @@ def load_json(p, lower):
             tgt[-1].extend(tokens)
         else:
             source.append(tokens)
+            sentence_sections.append(section)
+            if tokens_after[-1] == '\n':
+                section += 1
 
     source = [clean(' '.join(sent)).split() for sent in source]
     tgt = [clean(' '.join(sent)).split() for sent in tgt]
-    return source, tgt
+    return source, sentence_sections, tgt
 
 
 def load_xml(p):
@@ -238,14 +246,14 @@ class BertData:
         self.cls_vid = self.tokenizer.vocab[self.cls_token]
         self.pad_vid = self.tokenizer.vocab[self.pad_token]
 
-    def preprocess(self, src, tgt, sent_labels, use_bert_basic_tokenizer=False, is_test=False):
+    def preprocess(self, src, sections, tgt, sent_labels, use_bert_basic_tokenizer=False, is_test=False):
 
-        if (not is_test) and len(src) == 0:
+        if not is_test and len(src) == 0:
             return None
 
         original_src_txt = [' '.join(s) for s in src]
 
-        idxs = [i for i, s in enumerate(src) if (len(s) > self.args.min_src_ntokens_per_sent)]
+        idxs = [i for i, s in enumerate(src) if len(s) > self.args.min_src_ntokens_per_sent]  # indices of sentences that are of minimum length
 
         _sent_labels = [0] * len(src)
         for l in sent_labels:
@@ -255,8 +263,9 @@ class BertData:
         sent_labels = [_sent_labels[i] for i in idxs]
         src = src[:self.args.max_src_nsents]
         sent_labels = sent_labels[:self.args.max_src_nsents]
-
-        if (not is_test) and len(src) < self.args.min_src_nsents:
+        _sections = [sections[i] for i in idxs]
+        _sections = _sections[:self.args.max_src_nsents]
+        if not is_test and len(src) < self.args.min_src_nsents:
             return None
 
         src_txt = [' '.join(sent) for sent in src]
@@ -270,6 +279,7 @@ class BertData:
         _segs = [-1] + [i for i, t in enumerate(src_subtoken_idxs) if t == self.sep_vid]
         # identify length of sents
         segs = [_segs[i] - _segs[i - 1] for i in range(1, len(_segs))]
+        token_sections = []  # This array contains 0 for all tokens in the first sections, 1 for all tokens in second section
         segments_ids = []
         # intermittent labeling of sents based on being odd or even
         for i, s in enumerate(segs):
@@ -277,6 +287,8 @@ class BertData:
                 segments_ids += s * [0]
             else:
                 segments_ids += s * [1]
+            token_sections += s * [_sections[i]]
+
         cls_ids = [i for i, t in enumerate(src_subtoken_idxs) if t == self.cls_vid]
         sent_labels = sent_labels[:len(cls_ids)]
 
@@ -292,7 +304,10 @@ class BertData:
         tgt_txt = '<q>'.join([' '.join(tt) for tt in tgt])
         src_txt = [original_src_txt[i] for i in idxs]
 
-        return src_subtoken_idxs, sent_labels, tgt_subtoken_idxs, segments_ids, cls_ids, src_txt, tgt_txt
+        assert (len(token_sections) == len(segments_ids)), f'token sections and segment ids do not have same length'
+        assert (len(_sections) == len(sent_labels) == len(cls_ids)), \
+            f'prepocessed dimentions do not match {len(_sections)}, {len(sent_labels)}, {len(cls_ids)}'
+        return src_subtoken_idxs, sent_labels, tgt_subtoken_idxs, segments_ids, cls_ids, src_txt, tgt_txt, _sections, token_sections
 
 
 def _get_text_clean_tika(xml_file):
@@ -401,7 +416,7 @@ def _format_to_bert(params):
     jobs = json.load(open(json_file))
     datasets = []
     for ii, d in enumerate(jobs):
-        source, tgt = d['src'], d['tgt']
+        source, sections, tgt = d['src'], d['sections'], d['tgt']  # fix add section
         # greedily selects the top 3 sentences and labels them as 1
         summary_size = int(0.2 * len(source))
 
@@ -410,16 +425,16 @@ def _format_to_bert(params):
         if args.lower:
             source = [' '.join(s).lower().split() for s in source]
             tgt = [' '.join(s).lower().split() for s in tgt]
-        b_data = bert.preprocess(source, tgt, sent_labels, use_bert_basic_tokenizer=args.use_bert_basic_tokenizer,
+        b_data = bert.preprocess(source, sections, tgt, sent_labels,
+                                 use_bert_basic_tokenizer=args.use_bert_basic_tokenizer,
                                  is_test=is_test)
-        # b_data = bert.preprocess(source, tgt, sent_labels, use_bert_basic_tokenizer=args.use_bert_basic_tokenizer)
 
         if b_data is None:
             continue
-        src_subtoken_idxs, sent_labels, tgt_subtoken_idxs, segments_ids, cls_ids, src_txt, tgt_txt = b_data
+        src_subtoken_idxs, sent_labels, tgt_subtoken_idxs, segments_ids, cls_ids, src_txt, tgt_txt, sections, token_sections = b_data
         b_data_dict = {"src": src_subtoken_idxs, "tgt": tgt_subtoken_idxs,
                        "src_sent_labels": sent_labels, "segs": segments_ids, 'clss': cls_ids,
-                       'src_txt': src_txt, "tgt_txt": tgt_txt}
+                       'src_txt': src_txt, "tgt_txt": tgt_txt, "sections": sections, "token_sections": token_sections}
         datasets.append(b_data_dict)
     logger.info('Processed %d instances.' % len(datasets))
     logger.info('Saving to %s' % save_file)
@@ -476,8 +491,8 @@ def format_to_lines(args):
 def _format_to_lines(params):
     f, args = params
     print(f)
-    source, tgt = load_json(f, args.lower)
-    return {'src': source, 'tgt': tgt}
+    source, sections, tgt = load_json(f, args.lower)
+    return {'src': source, 'sections': sections, 'tgt': tgt}
 
 
 def format_xsum_to_lines(args):

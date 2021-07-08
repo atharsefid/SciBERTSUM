@@ -236,13 +236,3 @@ class MultiHeadedAttention(nn.Module):
         else:
             context = torch.matmul(drop_attn, value)
             return context
-
-        # CHECK
-        # batch_, q_len_, d_ = output.size()
-        # aeq(q_len, q_len_)
-        # aeq(batch, batch_)
-        # aeq(d, d_)
-
-        # Return one attn
-
-
