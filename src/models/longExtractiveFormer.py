@@ -31,8 +31,7 @@ class LongFormerConfig(BertConfig):
 
 
 class PositionalEncoding(nn.Module):
-
-    def __init__(self, config): #dropout, dim, max_len=5000):
+    def __init__(self, config):
         self.config = config
         max_len = self.config.max_position_embeddings
         self.dim = self.config.hidden_size
@@ -46,7 +45,6 @@ class PositionalEncoding(nn.Module):
         super(PositionalEncoding, self).__init__()
         self.register_buffer('pe', pe)
         self.dropout = nn.Dropout(p=dropout)
-
 
     def forward(self, emb, step=None):
         emb = emb * math.sqrt(self.dim)

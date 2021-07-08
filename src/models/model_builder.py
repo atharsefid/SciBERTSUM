@@ -15,7 +15,7 @@ def build_optim(args, model, checkpoint):
     """ Build optimizer """
 
     if checkpoint is not None:
-        optim = checkpoint['optim'] #### fix it already had '[0]' at the end of this line
+        optim = checkpoint['optim']  #### fix it already had '[0]' at the end of this line
         saved_optimizer_state_dict = optim.optimizer.state_dict()
         optim.optimizer.load_state_dict(saved_optimizer_state_dict)
         if args.visible_gpus != '-1':
@@ -96,7 +96,7 @@ class ExtSummarizer(nn.Module):
         self.to(device)
 
     def forward(self, src, sections, token_sections, segs, clss, mask_src, mask_cls):
-        print('-'*200)
+        print('-' * 200)
         # batch size must be 1
         print('src:', src.shape)
         print('segs:', segs.shape)
@@ -122,17 +122,15 @@ class ExtSummarizer(nn.Module):
         # merge `global_attention_mask` and `attention_mask`
         if global_attention_mask is not None:
             attention_mask = self._merge_to_attention_mask(attention_mask, global_attention_mask)
-        token_type_ids = segs
+
         position_ids = None
-        print('inputs_embeds before padding:', inputs_embeds.shape)
-        padding_len, inputs_embeds, attention_mask, token_type_ids, position_ids = self._pad_to_window_size(
-            inputs_embeds=inputs_embeds,
-            attention_mask=attention_mask,
-            token_type_ids=token_type_ids,
-            position_ids=position_ids,
-            pad_token_id=self.config.pad_token_id,
-        )
-        print('inputs_embeds after padding:', inputs_embeds.shape)
+        padding_len, inputs_embeds, attention_mask, sections, position_ids = \
+            self._pad_to_window_size(
+                inputs_embeds=inputs_embeds,
+                attention_mask=attention_mask,
+                sections=sections,
+                position_ids=position_ids,
+                pad_token_id=self.config.pad_token_id)
         assert (
                 inputs_embeds.shape[1] % self.config.attention_window[0] == 0
         ), f"padded inputs_embeds of size {inputs_embeds.shape[1]} is not a multiple of window size {self.config.attention_window}"
@@ -156,8 +154,8 @@ class ExtSummarizer(nn.Module):
             attention_mask = global_attention_mask + 1
         return attention_mask
 
-    def _pad_to_window_size(self, inputs_embeds: torch.Tensor, attention_mask: torch.Tensor, token_type_ids: torch.Tensor,
-        position_ids: torch.Tensor,  pad_token_id: int):
+    def _pad_to_window_size(self, inputs_embeds: torch.Tensor, attention_mask: torch.Tensor, sections: torch.Tensor,
+                            position_ids: torch.Tensor, pad_token_id: int):
         """A helper function to pad tokens and mask to work with implementation of Longformer self-attention."""
         # padding
         attention_window = (
@@ -190,9 +188,9 @@ class ExtSummarizer(nn.Module):
                 inputs_embeds = torch.cat([inputs_embeds, inputs_embeds_padding], dim=-2)
 
             attention_mask = F.pad(attention_mask, (0, padding_len), value=False)  # no attention on the padding tokens
-            token_type_ids = F.pad(token_type_ids, (0, padding_len), value=0)  # pad with token_type_id = 0
+            sections = F.pad(sections, (0, padding_len), value=False)
 
-        return padding_len, inputs_embeds, attention_mask, token_type_ids, position_ids
+        return padding_len, inputs_embeds, attention_mask, sections, position_ids
 
     def get_extended_attention_mask(self, attention_mask: Tensor, input_shape: Tuple[int], device: device) -> Tensor:
         """

@@ -51,7 +51,7 @@ def load_json(p, lower):
     tgt = []
     sentence_sections = []
     flag = False
-    section = 0
+    section = 1
     for sent in json.load(open(p))['sentences']:
         tokens = [t['word'] for t in sent['tokens']]
         tokens_after = [t['after'] for t in sent['tokens']]
