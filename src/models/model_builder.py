@@ -3,7 +3,6 @@ import torch.nn as nn
 from models.modeling_bert import BertModel, BertConfig
 from torch.nn.init import xavier_uniform_
 from typing import Optional, Tuple
-from models.encoder import Classifier, ExtTransformerEncoder
 from models.longExtractiveFormer import LongExtTransformerEncoder, LongFormerConfig
 from models.optimizers import Optimizer
 from others.log import logger

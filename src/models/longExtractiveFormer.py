@@ -132,10 +132,11 @@ class LongExtTransformerEncoder(nn.Module):
     def forward(self, top_vecs, mask, extended_mask):
         """ See :obj:`EncoderBase.forward()`"""
 
-        batch_size, n_sents = top_vecs.size(0), top_vecs.size(1)
-        pos_emb = self.pos_emb.pe[:, :n_sents]
+        # batch_size, n_sents = top_vecs.size(0), top_vecs.size(1)
+        # pos_emb = self.pos_emb.pe[:, :n_sents]
         x = top_vecs * mask[:, :, None].float()
-        x = x + pos_emb
+        print('longformer^^^^:', x.shape)
+        x = self.pos_emb(x)
 
         is_index_masked = extended_mask < 0  # masking tokens (-10000) are true in and local(0) or global(+1000) attentions are False
         is_index_global_attn = extended_mask > 0  # indices with global attention are True others False
