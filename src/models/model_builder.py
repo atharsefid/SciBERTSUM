@@ -14,7 +14,7 @@ def build_optim(args, model, checkpoint):
     """ Build optimizer """
 
     if checkpoint is not None:
-        optim = checkpoint['optim']  #### fix it already had '[0]' at the end of this line
+        optim = checkpoint['optim']  # fix it already had '[0]' at the end of this line
         saved_optimizer_state_dict = optim.optimizer.state_dict()
         optim.optimizer.load_state_dict(saved_optimizer_state_dict)
         if args.visible_gpus != '-1':
@@ -61,10 +61,10 @@ class Bert(nn.Module):
 
 
 class ExtSummarizer(nn.Module):
-    def __init__(self, args, device, checkpoint):
+    def __init__(self, args, device_id, checkpoint):
         super(ExtSummarizer, self).__init__()
         self.args = args
-        self.device = device
+        self.device = device_id
         self.bert = Bert(args.large, args.temp_dir, args.finetune_bert)
         self.doc_len = args.max_pos
         self.config = LongFormerConfig(hidden_size=self.bert.model.config.hidden_size,
@@ -77,8 +77,7 @@ class ExtSummarizer(nn.Module):
         if self.doc_len > 512:
             my_pos_embeddings = nn.Embedding(self.doc_len, self.bert.model.config.hidden_size)
             my_pos_embeddings.weight.data[:512] = self.bert.model.embeddings.position_embeddings.weight.data
-            my_pos_embeddings.weight.data[512:] = self.bert.model.embeddings.position_embeddings.weight.data[-1][None,
-                                                  :].repeat(self.doc_len - 512, 1)
+            my_pos_embeddings.weight.data[512:] = self.bert.model.embeddings.position_embeddings.weight.data[-1][None, :].repeat(self.doc_len - 512, 1)
             self.bert.model.embeddings.position_embeddings = my_pos_embeddings
 
         if checkpoint:
@@ -91,8 +90,7 @@ class ExtSummarizer(nn.Module):
                 for p in self.ext_layer.parameters():
                     if p.dim() > 1:
                         xavier_uniform_(p)
-        print('device is::::   ', device)
-        self.to(device)
+        self.to(device_id)
 
     def forward(self, src, sections, token_sections, segs, clss, mask_src, mask_cls):
         print('-' * 200)
@@ -138,10 +136,11 @@ class ExtSummarizer(nn.Module):
         # ourselves in which case we just need to make it broadcastable to all heads.
         extended_attention_mask: torch.Tensor = self.get_extended_attention_mask(attention_mask, input_shape, device)[:, 0, 0, :]
 
-        sent_scores = self.ext_layer(inputs_embeds, attention_mask, extended_attention_mask).squeeze(-1)
+        sent_scores = self.ext_layer(inputs_embeds, sections, attention_mask, extended_attention_mask).squeeze(-1)
         return sent_scores, extended_attention_mask
 
-    def _merge_to_attention_mask(self, attention_mask: torch.Tensor, global_attention_mask: torch.Tensor):
+    @staticmethod
+    def _merge_to_attention_mask(attention_mask: torch.Tensor, global_attention_mask: torch.Tensor):
         # longformer self attention expects attention mask to have 0 (no attn), 1 (local attn), 2 (global attn)
         # (global_attention_mask + 1) => 1 for local attention, 2 for global attention
         # => final attention_mask => 0 for no attention, 1 for local attention 2 for global attention
@@ -176,7 +175,7 @@ class ExtSummarizer(nn.Module):
             )
             if position_ids is not None:
                 # pad with position_id = pad_token_id as in modeling_roberta.RobertaEmbeddings
-                position_ids = F.pad(position_ids, (0, padding_len), value=pad_token_id)
+                position_ids = F.pad(position_ids, [0, padding_len], value=pad_token_id)
             if inputs_embeds is not None:
                 input_ids_padding = inputs_embeds.new_full(
                     (batch_size, padding_len),
@@ -186,8 +185,8 @@ class ExtSummarizer(nn.Module):
                 inputs_embeds_padding = self.bert.model.embeddings(input_ids_padding)
                 inputs_embeds = torch.cat([inputs_embeds, inputs_embeds_padding], dim=-2)
 
-            attention_mask = F.pad(attention_mask, (0, padding_len), value=False)  # no attention on the padding tokens
-            sections = F.pad(sections, (0, padding_len), value=False)
+            attention_mask = F.pad(attention_mask, [0, padding_len], value=False)  # no attention on the padding tokens
+            sections = F.pad(sections, [0, padding_len], value=False)
 
         return padding_len, inputs_embeds, attention_mask, sections, position_ids
 

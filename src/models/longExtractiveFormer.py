@@ -128,8 +128,9 @@ class LongExtTransformerEncoder(nn.Module):
         self.layer_norm = nn.LayerNorm(self.config.hidden_size, eps=1e-6)
         self.wo = nn.Linear(self.config.hidden_size, 1, bias=True)
         self.sigmoid = nn.Sigmoid()
+        self.section_embedding = nn.Embedding(config.section_size, config.hidden_size)
 
-    def forward(self, top_vecs, mask, extended_mask):
+    def forward(self, top_vecs, sections, mask, extended_mask):
         """ See :obj:`EncoderBase.forward()`"""
 
         # batch_size, n_sents = top_vecs.size(0), top_vecs.size(1)
@@ -137,6 +138,8 @@ class LongExtTransformerEncoder(nn.Module):
         x = top_vecs * mask[:, :, None].float()
         print('longformer^^^^:', x.shape)
         x = self.pos_emb(x)
+
+        x = x + self.section_embedding(sections)
 
         is_index_masked = extended_mask < 0  # masking tokens (-10000) are true in and local(0) or global(+1000) attentions are False
         is_index_global_attn = extended_mask > 0  # indices with global attention are True others False
