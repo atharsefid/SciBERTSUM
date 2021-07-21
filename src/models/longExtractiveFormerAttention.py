@@ -170,7 +170,7 @@ class LongformerSelfAttention(nn.Module):
         float_mask = remove_from_windowed_attention_mask.type_as(query_vectors).masked_fill(
             remove_from_windowed_attention_mask, -10000.0
         )  # this tensor will have value -10000 in global and masked indices
-        print('float_mask shape', float_mask.shape, attention_mask.shape)
+        # print('float_mask shape', float_mask.shape, attention_mask.shape)
         # diagonal mask with zeros everywhere and -inf inplace of padding
         diagonal_mask = self._sliding_chunks_query_key_matmul(
             float_mask.new_ones(size=float_mask.size()), float_mask, self.one_sided_attn_window_size

@@ -1,6 +1,3 @@
-# encoding=utf-8
-
-
 import argparse
 import time
 
@@ -17,12 +14,6 @@ def do_format_to_lines(args):
 def do_format_to_bert(args):
     print(time.clock())
     data_builder.format_to_bert(args)
-    print(time.clock())
-
-
-def do_format_xsum_to_lines(args):
-    print(time.clock())
-    data_builder.format_xsum_to_lines(args)
     print(time.clock())
 
 
@@ -69,27 +60,18 @@ if __name__ == '__main__':
     parser.add_argument('-n_cpus', default=2, type=int)
 
     args = parser.parse_args()
-    print('----', args.log_file)
     init_logger(args.log_file)
-    print('----', 'data_builder.' + args.mode + '(args)')
     eval('data_builder.' + args.mode + '(args)')
 
-# this model first tokenizes with stanfordCoreNLP and then uses bert to encode these tokens
-# step 1 command: python preprocess.py -mode get_text_clean_tike
-# step 2 command: python preprocess.py -mode clean_paper_jsons -save_path ../json_data/  -n_cpus 1 -use_bert_basic_tokenizer false
-# step 3 command: python preprocess.py -mode format_to_bert -raw_path ../json_data/ -save_path ../bert_data  -lower -n_cpus 40 -log_file ../logs/preprocess.log
+# pre-process
+# step 1 command (extract sections from GROBID output): python preprocess.py -mode extract_pdf_sections -log_file ../logs/extract_section.log
+# step 2 command (extract text from TIKA xml files): python preprocess.py -mode get_text_clean_tika -log_file ../logs/extract_tika_text.log
+# step 3 command (sentence tokenize with stanfordCoreNLP): python preprocess.py -mode tokenize  -save_path ../temp -log_file ../logs/tokenize_by_corenlp.log
+# step 4 command: python preprocess.py -mode clean_paper_jsons -save_path ../json_data/  -n_cpus 10 -log_file ../logs/build_json.log
+# step 5 command: python preprocess.py -mode format_to_bert -raw_path ../json_data/ -save_path ../bert_data  -lower -n_cpus 40 -log_file ../logs/build_bert_files.log
 
-# Train the model:
-# python3 train.py -task ext  -ext_dropout 0.1 -lr 2e-3  -visible_gpus 1,2,3 -report_every 200 -save_checkpoint_steps 1000 -batch_size 1 -train_steps 100000 -accum_count 2  -log_file ../logs/ext_bert -use_interval true -warmup_steps 10000
-# test model
-# python3 train.py -task ext -mode test -batch_size 1 -test_batch_size 1 -bert_data_path ../bert_data -log_file  ../logs/ext_bert_test  -test_from ../models/model_step_165000.pt  -model_path ../models -sep_optim true -use_interval true -visible_gpus 0  -alpha 0.95 -result_path ../results/ext
 
-# number of parameters
-# 6000 tokens: 124727297
-# 7000 tokens: 124727297
-# 9000 tokens: 127031297 could not fit in memory
-
-# python preprocess.py -mode tokenize -raw_path ../raw_stories -save_path ../merged_stories_tokenized
-# python preprocess.py -mode format_to_lines -raw_path ../merged_stories_tokenized -save_path ../json_data/cnndm -n_cpus 1 -use_bert_basic_tokenizer false -map_path ../urls
-# python preprocess.py -mode format_to_bert -raw_path ../json_data -save_path ../bert_data  -lower -n_cpus 4 -log_file ../logs/preprocess.log
-# python train.py -mode train -bert_data_path ../bert_data -ext_dropout 0.1 -model_path ../models -lr 2e-3 -visible_gpus -1 -report_every 50 -save_checkpoint_steps 1000 -batch_size 1 -train_steps 50000 -accum_count 2 -log_file ../logs/ext_bert_cnndm -use_interval true -warmup_steps 10000 -max_pos 512
+# train
+# python3 train.py  -ext_dropout 0.1 -lr 2e-3  -visible_gpus -1 -report_every 200 -save_checkpoint_steps 1000 -batch_size 1 -train_steps 100000 -accum_count 2  -log_file ../logs/ext_bert -use_interval true -warmup_steps 10000
+# test
+# python3 train.py  -mode test -batch_size 1 -test_batch_size 1 -bert_data_path ../bert_data -log_file  ../logs/ext_bert_test  -test_from ../models/model_step_165000.pt  -model_path ../models -sep_optim true -use_interval true -visible_gpus 0  -alpha 0.95 -result_path ../results/ext

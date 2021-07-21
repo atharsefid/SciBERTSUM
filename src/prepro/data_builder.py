@@ -4,76 +4,67 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import subprocess
 import xml.etree.ElementTree as ET
 from os.path import join as pjoin
-
 import torch
 from bs4 import BeautifulSoup as bs
 from multiprocess import Pool
-
 from others.log import logger
 from others.tokenization import BertTokenizer
 from others.utils import clean
 from prepro.utils import _get_word_ngrams
+from glob import glob
+from bs4 import BeautifulSoup
 
 nyt_remove_words = ["photo", "graph", "chart", "map", "table", "drawing"]
+
+
+def read_pdf_sections(paper, ignore_acknowledgement=False):
+    pdfxml = open(paper, 'rb')
+    contents = pdfxml.read()
+    soup = BeautifulSoup(contents, 'html.parser')
+    abstracts = soup.find_all('abstract')
+    for abstract in abstracts:
+        # yield 'abstract'
+        yield abstract.get_text()
+    divs = soup.find_all('div')
+    for i, div in enumerate(divs):
+        head_len = 0
+        if 'type' in div.attrs and div.attrs['type'] == 'references':
+            continue
+        if ignore_acknowledgement and 'type' in div.attrs and div.attrs['type'] == 'acknowledgement':
+            continue
+        head = div.find('head')
+        if head is not None:
+            head_text = head.get_text()
+            head_len = len(head_text)
+            # yield head_text
+        yield div.get_text()[head_len:]
+
+
+def _extract_pdf_sections(paper):
+    _, _, directory, name = paper.split('/')
+    outfile = open('../raw_data/' + directory + '/'+directory + '.sections.txt', 'w')
+    for line in read_pdf_sections(paper):
+        outfile.write(line.strip() + '\n')
+    outfile.close()
+
+
+def extract_pdf_sections(args):
+    papers = []
+    for paper in glob('../raw_data/*/*.tei.xml'):
+        papers.append(paper)
+    pool = Pool(20)
+    result = pool.map(_extract_pdf_sections, papers)
+    pool.close()
+    pool.join()
 
 
 def recover_from_corenlp(s):
     s = re.sub(r' \'{\w}', '\'\g<1>', s)
     s = re.sub(r'\'\' {\w}', '\'\'\g<1>', s)
-
-
-def load_pdf_ppt_jsons(pdf_ppt_jsons, lower=True, extractive=True):
-    pdf_json, ppt_json = pdf_ppt_jsons
-    source = []
-    tgt = []
-    for sent in json.load(open(pdf_json))['sentences']:
-        tokens = [t['word'] for t in sent['tokens']]
-        if lower:
-            tokens = [t.lower() for t in tokens]
-        source.append(tokens)
-
-    for sent in json.load(open(ppt_json))['sentences']:
-        tokens = [t['word'] for t in sent['tokens']]
-        if lower:
-            tokens = [t.lower() for t in tokens]
-        tgt.append(tokens)
-
-    source = [clean(' '.join(sent)).split() for sent in source]
-    tgt = [clean(' '.join(sent)).split() for sent in tgt]
-    return {'src': source, 'tgt': tgt}
-
-
-def load_json(p, lower):
-    source = []
-    tgt = []
-    sentence_sections = []
-    flag = False
-    section = 1
-    for sent in json.load(open(p))['sentences']:
-        tokens = [t['word'] for t in sent['tokens']]
-        tokens_after = [t['after'] for t in sent['tokens']]
-
-        if lower:
-            tokens = [t.lower() for t in tokens]
-
-        if tokens[0] == '@highlight':
-            flag = True
-            tgt.append([])
-            continue
-        if flag:
-            tgt[-1].extend(tokens)
-        else:
-            source.append(tokens)
-            sentence_sections.append(section)
-            if tokens_after[-1] == '\n':
-                section += 1
-
-    source = [clean(' '.join(sent)).split() for sent in source]
-    tgt = [clean(' '.join(sent)).split() for sent in tgt]
-    return source, sentence_sections, tgt
 
 
 def load_xml(p):
@@ -130,34 +121,38 @@ def load_xml(p):
 
 
 def tokenize(args):
-    stories_dir = os.path.abspath(args.raw_path)
-    tokenized_stories_dir = os.path.abspath(args.save_path)
-
-    print("Preparing to tokenize %s to %s..." % (stories_dir, tokenized_stories_dir))
-    stories = os.listdir(stories_dir)
-    # make IO list file
-    print("Making list of files to tokenize...")
+    temp_dir = os.path.abspath(args.save_path)
+    papers = []
     with open("mapping_for_corenlp.txt", "w") as f:
-        for s in stories:
-            if not s.endswith('story'):
-                continue
-            f.write("%s\n" % (os.path.join(stories_dir, s)))
-    command = ['java', 'edu.stanford.nlp.pipeline.StanfordCoreNLP', '-annotators', 'tokenize,ssplit',
-               '-ssplit.newlineIsSentenceBreak', 'always', '-filelist', 'mapping_for_corenlp.txt', '-outputFormat',
-               'json', '-outputDirectory', tokenized_stories_dir]
-    print("Tokenizing %i files in %s and saving in %s..." % (len(stories), stories_dir, tokenized_stories_dir))
-    subprocess.call(command)
-    print("Stanford CoreNLP Tokenizer has finished.")
+        for paper in glob('../raw_data/*/*.sections.txt'):
+            papers.append(paper)
+            f.write("%s\n" % paper)
+    _tokenize(papers, temp_dir)
     os.remove("mapping_for_corenlp.txt")
 
+    slides = []
+    with open("mapping_for_corenlp.txt", "w") as f:
+        for slide in glob('../raw_data/*/*.clean_tika.txt'):
+            slides.append(slide)
+            f.write("%s\n" % slide)
+    _tokenize(slides, temp_dir)
+    os.remove("mapping_for_corenlp.txt")
+
+
+def _tokenize(papers, temp_dir):
+    command = ['java', 'edu.stanford.nlp.pipeline.StanfordCoreNLP', '-annotators', 'tokenize,ssplit',
+               'always', '-filelist', 'mapping_for_corenlp.txt', '-outputFormat',
+               'json', '-outputDirectory', temp_dir]
+
+    subprocess.call(command)
     # Check that the tokenized stories directory contains the same number of files as the original directory
-    num_orig = len(os.listdir(stories_dir))
-    num_tokenized = len(os.listdir(tokenized_stories_dir))
-    if num_orig != num_tokenized:
-        raise Exception(
-            "The tokenized stories directory %s contains %i files, but it should contain the same number as %s (which has %i files). Was there an error during tokenization?" % (
-                tokenized_stories_dir, num_tokenized, stories_dir, num_orig))
-    print("Successfully finished tokenizing %s to %s.\n" % (stories_dir, tokenized_stories_dir))
+    assert len(os.listdir(temp_dir)) == len(papers),\
+        f"There are %i papers to tokenize, but destination directory contains  %i files." % (
+            len(papers), len(os.listdir(temp_dir)),)
+    # transfer the tokenize to the raw_data
+    for file in os.listdir(temp_dir):
+        directory, _, _, _ = file.split('.')
+        shutil.move('/'.join([temp_dir, file]), '/'.join(['..', 'raw_data', directory]))
 
 
 def cal_rouge(evaluated_ngrams, reference_ngrams):
@@ -225,7 +220,7 @@ def greedy_selection(doc_sent_list, abstract_sent_list, summary_size):
 
 
 def hashhex(s):
-    """Returns a heximal formated SHA1 hash of the input string."""
+    """Returns a heximal formatted SHA1 hash of the input string."""
     h = hashlib.sha1()
     h.update(s.encode('utf-8'))
     return h.hexdigest()
@@ -306,31 +301,28 @@ class BertData:
 
         assert (len(token_sections) == len(segments_ids)), f'token sections and segment ids do not have same length'
         assert (len(_sections) == len(sent_labels) == len(cls_ids)), \
-            f'prepocessed dimentions do not match {len(_sections)}, {len(sent_labels)}, {len(cls_ids)}'
+            f'preprocessed dimensions do not match {len(_sections)}, {len(sent_labels)}, {len(cls_ids)}'
         return src_subtoken_idxs, sent_labels, tgt_subtoken_idxs, segments_ids, cls_ids, src_txt, tgt_txt, _sections, token_sections
 
 
 def _get_text_clean_tika(xml_file):
     pages_text = []
-    path = xml_file.split('/')
-    clean_path = '/'.join(path[:-1]) + '/clean_tika.txt'
+    _,_, directory, _ = xml_file.split('/')
+    clean_path = '../raw_data/' + directory +'/'+ directory+'.clean_tika.txt'
     with open(xml_file, "r") as file:
         content = "".join(file.readlines())
         bs_content = bs(content, "lxml")
         for page in bs_content.find_all("div", {"class": "page"}):
             pages_text.append('\n'.join([p.text.strip() for p in page.find_all("p") if p.text]).strip())
     xml_text = '\n'.join(pages_text)
-
     with open(clean_path, 'w') as file:
         file.write(xml_text)
 
 
-def get_text_clean_tike(args):
+def get_text_clean_tika(args):
     xmls = []
-    for i in range(4984):
-        xmls.append('/data/athar/ppt_generation/ppt_generation/slide_generator_data/data/'
-                    + str(i) + '/slide.clean_tika.xml')
-
+    for slide in glob('../raw_data/*/slide.clean_tika.xml'):
+        xmls.append(slide)
     pool = Pool(20)
     result = pool.map(_get_text_clean_tika, xmls)
     print(len(result))
@@ -338,16 +330,43 @@ def get_text_clean_tike(args):
     pool.join()
 
 
+def load_pdf_ppt_jsons(pdf_ppt_jsons, lower=True, extractive=True):
+    pdf_json, ppt_json = pdf_ppt_jsons
+    source = []
+    tgt = []
+    sections = []
+    section = 1
+    for sent in json.load(open(pdf_json))['sentences']:
+        tokens = [t['word'] for t in sent['tokens']]
+        after_tokens = [t['after'] for t in sent['tokens']]
+        if lower:
+            tokens = [t.lower() for t in tokens]
+        source.append(tokens)
+        sections.append(section)
+        if len(after_tokens) > 0 and after_tokens[-1] == '\n':
+            section += 1
+
+    for sent in json.load(open(ppt_json))['sentences']:
+        tokens = [t['word'] for t in sent['tokens']]
+        if lower:
+            tokens = [t.lower() for t in tokens]
+        tgt.append(tokens)
+
+    source = [clean(' '.join(sent)).split() for sent in source]
+    tgt = [clean(' '.join(sent)).split() for sent in tgt]
+    return {'src': source, 'sections': sections, 'tgt': tgt}
+
+
 def clean_paper_jsons(args):
     train_set = []
     test_set = []
     val_set = []
-    for i in range(4984):
+    for i in os.listdir('../raw_data'):
 
-        main_path = '/data/athar/ppt_generation/ppt_generation/slide_generator_data/data/' + str(i)
-        ppt_path = main_path + '/clean_tika.txt.json'
-        pdf_path = main_path + '/grobid/sections.stanfordnlp.json'
-
+        main_path = '../raw_data/' + i + '/'
+        ppt_path = main_path + i + '.clean_tika.txt.json'
+        pdf_path = main_path + i + '.sections.txt.json'
+        i = int(i)
         if i < 4000:
             train_set.append((pdf_path, ppt_path))
         if 4000 < i < 4250:
@@ -363,7 +382,6 @@ def clean_paper_jsons(args):
         size = 0
         for d in pool.imap(load_pdf_ppt_jsons, corpora[corpus_type]):
             dataset.append(d)
-
             if len(dataset) > args.shard_size:
                 pt_file = "{:s}/{:s}.{:d}.json".format(args.save_path, corpus_type, p_ct)
 
@@ -391,7 +409,7 @@ def format_to_bert(args):
         datasets = ['train', 'valid', 'test']
     for corpus_type in datasets:
         a_lst = []
-        for json_f in glob.glob(pjoin(args.raw_path, '*' + corpus_type + '.*.json')):
+        for json_f in glob(pjoin(args.raw_path, '*' + corpus_type + '.*.json')):
             real_name = json_f.split('/')[-1]
             a_lst.append((corpus_type, json_f, args, pjoin(args.save_path, real_name.replace('json', 'bert.pt'))))
         print('document for corpus type:', corpus_type, a_lst)
@@ -416,7 +434,7 @@ def _format_to_bert(params):
     jobs = json.load(open(json_file))
     datasets = []
     for ii, d in enumerate(jobs):
-        source, sections, tgt = d['src'], d['sections'], d['tgt']  # fix add section
+        source, sections, tgt = d['src'], d['sections'], d['tgt']
         # greedily selects the top 3 sentences and labels them as 1
         summary_size = int(0.2 * len(source))
 
@@ -440,112 +458,3 @@ def _format_to_bert(params):
     logger.info('Saving to %s' % save_file)
     torch.save(datasets, save_file)
     gc.collect()
-
-
-def format_to_lines(args):
-    corpus_mapping = {}
-    for corpus_type in ['valid', 'test', 'train']:
-        temp = []
-        for line in open(pjoin(args.map_path, 'mapping_' + corpus_type + '.txt')):
-            temp.append(hashhex(line.strip()))
-        corpus_mapping[corpus_type] = {key.strip(): 1 for key in temp}
-    train_files, valid_files, test_files = [], [], []
-    for f in glob.glob(pjoin(args.raw_path, '*.json')):
-        real_name = f.split('/')[-1].split('.')[0]
-        if real_name in corpus_mapping['valid']:
-            valid_files.append(f)
-        elif real_name in corpus_mapping['test']:
-            test_files.append(f)
-        elif real_name in corpus_mapping['train']:
-            train_files.append(f)
-        # else:
-        #     train_files.append(f)
-
-    corpora = {'train': train_files, 'valid': valid_files, 'test': test_files}
-    for corpus_type in ['train', 'valid', 'test']:
-        a_lst = [(f, args) for f in corpora[corpus_type]]
-        pool = Pool(args.n_cpus)
-        dataset = []
-        p_ct = 0
-        for d in pool.imap_unordered(_format_to_lines, a_lst):
-            dataset.append(d)
-            if len(dataset) > args.shard_size:
-                pt_file = "{:s}.{:s}.{:d}.json".format(args.save_path, corpus_type, p_ct)
-                with open(pt_file, 'w') as save:
-                    # save.write('\n'.join(dataset))
-                    save.write(json.dumps(dataset))
-                    p_ct += 1
-                    dataset = []
-
-        pool.close()
-        pool.join()
-        if len(dataset) > 0:
-            pt_file = "{:s}.{:s}.{:d}.json".format(args.save_path, corpus_type, p_ct)
-            with open(pt_file, 'w') as save:
-                # save.write('\n'.join(dataset))
-                save.write(json.dumps(dataset))
-                p_ct += 1
-                dataset = []
-
-
-def _format_to_lines(params):
-    f, args = params
-    print(f)
-    source, sections, tgt = load_json(f, args.lower)
-    return {'src': source, 'sections': sections, 'tgt': tgt}
-
-
-def format_xsum_to_lines(args):
-    if args.dataset != '':
-        datasets = [args.dataset]
-    else:
-        datasets = ['train', 'test', 'valid']
-
-    corpus_mapping = json.load(open(pjoin(args.raw_path, 'XSum-TRAINING-DEV-TEST-SPLIT-90-5-5.json')))
-
-    for corpus_type in datasets:
-        mapped_fnames = corpus_mapping[corpus_type]
-        root_src = pjoin(args.raw_path, 'restbody')
-        root_tgt = pjoin(args.raw_path, 'firstsentence')
-        # realnames = [fname.split('.')[0] for fname in os.listdir(root_src)]
-        realnames = mapped_fnames
-
-        a_lst = [(root_src, root_tgt, n) for n in realnames]
-        pool = Pool(args.n_cpus)
-        dataset = []
-        p_ct = 0
-        for d in pool.imap_unordered(_format_xsum_to_lines, a_lst):
-            if d is None:
-                continue
-            dataset.append(d)
-            if len(dataset) > args.shard_size:
-                pt_file = "{:s}.{:s}.{:d}.json".format(args.save_path, corpus_type, p_ct)
-                with open(pt_file, 'w') as save:
-                    save.write(json.dumps(dataset))
-                    p_ct += 1
-                    dataset = []
-
-        pool.close()
-        pool.join()
-        if len(dataset) > 0:
-            pt_file = "{:s}.{:s}.{:d}.json".format(args.save_path, corpus_type, p_ct)
-            with open(pt_file, 'w') as save:
-                save.write(json.dumps(dataset))
-                p_ct += 1
-                dataset = []
-
-
-def _format_xsum_to_lines(params):
-    src_path, root_tgt, name = params
-    f_src = pjoin(src_path, name + '.restbody')
-    f_tgt = pjoin(root_tgt, name + '.fs')
-    if os.path.exists(f_src) and os.path.exists(f_tgt):
-        print(name)
-        source = []
-        for sent in open(f_src):
-            source.append(sent.split())
-        tgt = []
-        for sent in open(f_tgt):
-            tgt.append(sent.split())
-        return {'src': source, 'tgt': tgt}
-    return None

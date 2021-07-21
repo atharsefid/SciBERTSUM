@@ -143,18 +143,12 @@ class ReportMgr(ReportMgrBase):
         if train_stats is not None:
             self.log('Train xent: %g' % train_stats.xent())
 
-            self.maybe_log_tensorboard(train_stats,
-                                       "train",
-                                       lr,
-                                       step)
+            self.maybe_log_tensorboard(train_stats, "train", lr, step)
 
         if valid_stats is not None:
             self.log('Validation xent: %g at step %d' % (valid_stats.xent(), step))
 
-            self.maybe_log_tensorboard(valid_stats,
-                                       "valid",
-                                       lr,
-                                       step)
+            self.maybe_log_tensorboard(valid_stats, "valid", lr, step)
 
 
 class Statistics(object):
@@ -257,7 +251,7 @@ class Statistics(object):
             % (step_fmt,
                self.xent(),
                learning_rate,
-               self.n_docs / (t + 1e-5),
+               self.n_docs/ (t + 1e-5),
                time.time() - start))
         sys.stdout.flush()
 

@@ -136,7 +136,7 @@ class Trainer(object):
                                                 .all_gather_list
                                                 (normalization))
 
-                        self._gradient_accumulation(
+                        self._gradient_accumulation( # this is the main function that calculates the loss
                             true_batchs, normalization, total_stats,
                             report_stats)
 
@@ -297,6 +297,9 @@ class Trainer(object):
 
     def _gradient_accumulation(self, true_batchs, normalization, total_stats,
                                report_stats):
+        """
+        normalization: number of documents processed until grad_accumulate is reached
+        """
         if self.grad_accum_count > 1:
             self.model.zero_grad()
 
@@ -306,7 +309,6 @@ class Trainer(object):
             # each batch is a 1024 tokens and the sentences that fit in the this length
             src = batch.src
             labels = batch.src_sent_labels
-            # print('---- labels:::::', src.shape, labels.shape, labels)
             segs = batch.segs
             clss = batch.clss
             mask = batch.mask_src
@@ -317,14 +319,13 @@ class Trainer(object):
             batch_size, sent_count = mask_cls.shape
             sent_scores, mask = self.model(src, sections, token_sections, segs, clss, mask, mask_cls)
             sent_scores = sent_scores[:, :sent_count]  # remove padded items from returned scores
-            mask = mask[:, :sent_count]  # remove padded items from returned masks
             loss = self.loss(sent_scores, labels.float())
-            loss = (loss * mask.float()).sum()
+            loss = (loss * mask_cls.float()).sum()
             (loss / loss.numel()).backward()
             # loss.div(float(normalization)).backward()
 
             batch_stats = Statistics(float(loss.cpu().data.numpy()), normalization)
-
+            # print('----stats info', batch_stats.loss, batch_stats.n_docs)
             total_stats.update(batch_stats)
             report_stats.update(batch_stats)
 

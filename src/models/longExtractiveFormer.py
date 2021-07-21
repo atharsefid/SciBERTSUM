@@ -136,7 +136,6 @@ class LongExtTransformerEncoder(nn.Module):
         # batch_size, n_sents = top_vecs.size(0), top_vecs.size(1)
         # pos_emb = self.pos_emb.pe[:, :n_sents]
         x = top_vecs * mask[:, :, None].float()
-        print('longformer^^^^:', x.shape)
         x = self.pos_emb(x)
 
         x = x + self.section_embedding(sections)

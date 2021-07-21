@@ -1,7 +1,3 @@
-#!/usr/bin/env python
-"""
-    Main training workflow
-"""
 from __future__ import division
 
 import argparse
@@ -97,7 +93,6 @@ if __name__ == '__main__':
     init_logger(args.log_file)
     device = "cpu" if args.visible_gpus == '-1' else "cuda"
     device_id = 0 if device == "cuda" else -1
-    device_id = -1  # fix
     if args.mode == 'train':
         train_ext(args, device_id)
     elif args.mode == 'validate':

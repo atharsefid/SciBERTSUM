@@ -93,22 +93,22 @@ class ExtSummarizer(nn.Module):
         self.to(device_id)
 
     def forward(self, src, sections, token_sections, segs, clss, mask_src, mask_cls):
-        print('-' * 200)
-        # batch size must be 1
-        print('src:', src.shape)
-        print('segs:', segs.shape)
-        print('clss:', clss.shape)
-        print('mask_src:', mask_src.shape)
-        print('mask_cls:', mask_cls.shape)
-        print('section shape:', sections.shape)
-        print(' token_sections:', token_sections.shape)
+        # print('-' * 200)
+        # # batch size must be 1
+        # print('src:', src.shape)
+        # print('segs:', segs.shape)
+        # print('clss:', clss.shape)
+        # print('mask_src:', mask_src.shape)
+        # print('mask_cls:', mask_cls.shape)
+        # print('section shape:', sections.shape)
+        # print(' token_sections:', token_sections.shape)
 
         top_vec = self.bert(src, token_sections, segs, mask_src)
         sents_vec = top_vec[torch.arange(top_vec.size(0)).unsqueeze(1), clss]
         sents_vec = sents_vec * mask_cls[:, :, None].float()
-        print('-------')
-        print('sents_vec:', sents_vec.shape)
-        print('sent_vec masks:', mask_cls.shape)
+        # print('-------')
+        # print('sents_vec:', sents_vec.shape)
+        # print('sent_vec masks:', mask_cls.shape)
         # ###################################################################################
         # prepare sents_vec for long former
         inputs_embeds = sents_vec
@@ -168,11 +168,11 @@ class ExtSummarizer(nn.Module):
 
         padding_len = (attention_window - seq_len % attention_window) % attention_window
         if padding_len > 0:
-            logger.info(
-                "Input ids are automatically padded from {} to {} to be a multiple of `config.attention_window`: {}".format(
-                    seq_len, seq_len + padding_len, attention_window
-                )
-            )
+            # logger.info(
+            #     "Input ids are automatically padded from {} to {} to be a multiple of `config.attention_window`: {}".format(
+            #         seq_len, seq_len + padding_len, attention_window
+            #     )
+            # )
             if position_ids is not None:
                 # pad with position_id = pad_token_id as in modeling_roberta.RobertaEmbeddings
                 position_ids = F.pad(position_ids, [0, padding_len], value=pad_token_id)
