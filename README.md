@@ -55,12 +55,19 @@ python preprocess.py -mode format_to_bert -raw_path ../json_data/ -save_path ../
 
 **First run: For the first time, you should use single-GPU, so the code can download the BERT model. Use ``-visible_gpus -1``, after downloading, you could kill the process and rerun the code with multi-GPUs.**
 
-### Extractive Setting
+### Train
 
 ```
-# python train.py  -ext_dropout 0.1 -lr 2e-3  -visible_gpus -1 -report_every 200 -save_checkpoint_steps 1000 -batch_size 1 -train_steps 100000 -accum_count 2  -log_file ../logs/ext_bert -use_interval true -warmup_steps 10000
+python train.py  -ext_dropout 0.1 -lr 2e-3  -visible_gpus 1,2,3 -report_every 200 -save_checkpoint_steps 1000 -batch_size 1 -train_steps 100000 -accum_count 2  -log_file ../logs/ext_bert -use_interval true -warmup_steps 10000
 ```
+To continue training from a checkpoint
+```
+python train.py  -ext_dropout 0.1 -lr 2e-3  -train_from ../models/model_step_99000.pt -visible_gpus 1,2,3 -report_every 200 -save_checkpoint_steps 1000 -batch_size 1 -train_steps 100000 -accum_count 2  -log_file ../logs/ext_bert -use_interval true -warmup_steps 10000
+```
+### Test
 
-
+```
+python train.py -mode test  -test_batch_size 1 -bert_data_path ../bert_data -log_file ../logs/ext_bert_test -test_from ../models/model_step_99000.pt -model_path ../models -sep_optim true -use_interval true -visible_gpus 1,2,3 -alpha 0.95 -result_path ../results/ext 
+```
 
 

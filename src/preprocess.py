@@ -74,4 +74,4 @@ if __name__ == '__main__':
 # train
 # python3 train.py  -ext_dropout 0.1 -lr 2e-3  -visible_gpus -1 -report_every 200 -save_checkpoint_steps 1000 -batch_size 1 -train_steps 100000 -accum_count 2  -log_file ../logs/ext_bert -use_interval true -warmup_steps 10000
 # test
-# python3 train.py  -mode test -batch_size 1 -test_batch_size 1 -bert_data_path ../bert_data -log_file  ../logs/ext_bert_test  -test_from ../models/model_step_165000.pt  -model_path ../models -sep_optim true -use_interval true -visible_gpus 0  -alpha 0.95 -result_path ../results/ext
+# python3 train.py  -mode test -batch_size 1 -test_batch_size 1 -bert_data_path ../bert_data -log_file  ../logs/ext_bert_test  -test_from ../models/model_step_99000.pt  -model_path ../models -sep_optim true -use_interval true -visible_gpus 0  -alpha 0.95 -result_path ../results/ext

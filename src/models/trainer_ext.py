@@ -178,10 +178,11 @@ class Trainer(object):
                 mask_cls = batch.mask_cls
                 sections = batch.sections
                 token_sections = batch.token_sections
+                batch_size, sent_count = mask_cls.shape
                 sent_scores, mask = self.model(src, sections, token_sections, segs, clss, mask, mask_cls)
-
+                sent_scores = sent_scores[:, :sent_count]
                 loss = self.loss(sent_scores, labels.float())
-                loss = (loss * mask.float()).sum()
+                loss = (loss * mask_cls.float()).sum()
                 batch_stats = Statistics(float(loss.cpu().data.numpy()), len(labels))
                 stats.update(batch_stats)
             self._report_step(0, step, valid_stats=stats)
@@ -239,15 +240,14 @@ class Trainer(object):
                             selected_ids = [[j for j in range(batch.clss.size(1)) if labels[i][j] == 1] for i in
                                             range(batch.batch_size)]
                         else:
-                            # sent_scores = [#ofDocs, numberOfsents]
+                            batch_size, sent_count = mask_cls.shape
                             sent_scores, mask = self.model(src, sections, token_sections, segs, clss, mask, mask_cls)
-                            print('sent scores: ', sent_scores.size(), src.size(), labels.size(), mask.size())
+                            sent_scores = sent_scores[:, :sent_count]  # remove padded items from returned scores
                             loss = self.loss(sent_scores, labels.float())
-                            loss = (loss * mask.float()).sum()
+                            loss = (loss * mask_cls.float()).sum()
                             batch_stats = Statistics(float(loss.cpu().data.numpy()), len(labels))
                             stats.update(batch_stats)
 
-                            sent_scores = sent_scores + mask.float()
                             sent_scores = sent_scores.cpu().data.numpy()
                             selected_ids = np.argsort(-sent_scores, 1)
                         # selected_ids = np.sort(selected_ids,1)
@@ -289,7 +289,7 @@ class Trainer(object):
                             save_pred.write(pred[i].strip() + '\n')
 
         if step != -1 and self.args.report_rouge:
-            rouges = test_rouge(self.args.temp_dir, can_path, gold_path)
+            rouges = test_rouge( can_path, gold_path)
             logger.info('temp_dir is: {}'.format(self.args.temp_dir))
             logger.info('Rouges at step %d \n%s' % (step, rouge_results_to_str(rouges)))
         self._report_step(0, step, valid_stats=stats)
