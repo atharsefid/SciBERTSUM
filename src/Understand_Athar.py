@@ -7,7 +7,6 @@ import numpy as np
 
 
 def plot_data_statistics():
-    import numpy as np
     parser = argparse.ArgumentParser()
     parser.add_argument("-bert_data_path", default='../bert_data')
     args = parser.parse_args()
@@ -70,7 +69,8 @@ def plot_data_statistics():
         plt.xlim(xmax=200)
         plt.show()
 
-    plot_sent_sizes(sent_sizes)
+    #plot_sent_sizes(sent_sizes)
+    plot_token_counts(slide_tokens)
 
 
 def plot_xent_results():

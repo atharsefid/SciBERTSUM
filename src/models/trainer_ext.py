@@ -40,7 +40,7 @@ def build_trainer(args, device_id, model, optim):
 
     print('gpu_rank %d' % gpu_rank)
 
-    tensorboard_log_dir = args.model_path
+    tensorboard_log_dir = args.tensorboard_log_path
 
     writer = SummaryWriter(tensorboard_log_dir, comment="Unmt")
 
@@ -48,7 +48,6 @@ def build_trainer(args, device_id, model, optim):
 
     trainer = Trainer(args, model, optim, grad_accum_count, n_gpu, gpu_rank, report_manager)
 
-    # print(tr)
     if model:
         n_params = _tally_parameters(model)
         logger.info('* number of parameters: %d' % n_params)

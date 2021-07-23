@@ -19,8 +19,7 @@ def test_rouge(cand, ref):
     candidates = [line.strip() for line in open(cand, encoding='utf-8')]
     references = [line.strip() for line in open(ref, encoding='utf-8')]
     print('*' * 50)
-    print(len(candidates))
-    print(len(references))
+    print('There are %d reference summaries and %d candidate summaries that do not match'%(len(references), len(candidates)))
     assert (len(candidates) == len(references)), f" There are {len(references)} reference summaries and {len(references)} candidate summaries that do not match"
     metric = load_metric('rouge')
     metric.add_batch(predictions=candidates, references=references)

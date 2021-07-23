@@ -155,6 +155,9 @@ def train_single_ext(args, device_id):
 def validate_ext(args, device_id):
     timestep = 0
     if args.test_all:
+        """
+        if test all, the top 3 check points with the lowest xent scores are considered for the final test
+        """
         cp_files = sorted(glob.glob(os.path.join(args.model_path, 'model_step_*.pt')))
         cp_files.sort(key=os.path.getmtime)
         xent_lst = []
@@ -163,7 +166,7 @@ def validate_ext(args, device_id):
             xent = validate(args, device_id, cp, step)
             xent_lst.append((xent, cp))
             max_step = xent_lst.index(min(xent_lst))
-            if i - max_step > 10:
+            if i - max_step > 10: # if the results have not been improved for 10 checkpoints, break
                 break
         xent_lst = sorted(xent_lst, key=lambda x: x[0])[:3]
         logger.info('PPL %s' % str(xent_lst))
@@ -199,7 +202,7 @@ def validate_ext(args, device_id):
 
 def validate(args, device_id, pt, step):
     device = "cpu" if args.visible_gpus == '-1' else "cuda"
-    if (pt != ''):
+    if pt != '':
         test_from = pt
     else:
         test_from = args.test_from

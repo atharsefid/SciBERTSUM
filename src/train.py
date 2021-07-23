@@ -25,13 +25,14 @@ if __name__ == '__main__':
     parser.add_argument("-mode", default='train', type=str, choices=['train', 'validate', 'test'])
     parser.add_argument("-bert_data_path", default='../bert_data')
     parser.add_argument("-model_path", default='../models/')
+    parser.add_argument("-tensorboard_log_path", default='../tensorboard_log/')
     parser.add_argument("-result_path", default='../results/')
     parser.add_argument("-temp_dir", default='../temp')
 
     parser.add_argument("-batch_size", default=1, type=int)
     parser.add_argument("-test_batch_size", default=1, type=int)
 
-    parser.add_argument("-max_pos", default=1024, type=int)  # This is the maximum size of the document.
+    parser.add_argument("-max_pos", default=4098, type=int)  # max size for paper,Fix
     parser.add_argument("-use_interval", type=str2bool, nargs='?', const=True, default=True)
     parser.add_argument("-large", type=str2bool, nargs='?', const=True, default=False)
 
@@ -54,7 +55,7 @@ if __name__ == '__main__':
     parser.add_argument("-generator_shard_size", default=32, type=int)
     parser.add_argument("-alpha", default=0.6, type=float)
     parser.add_argument("-beam_size", default=5, type=int)
-    parser.add_argument("-max_tgt_len", default=5000, type=int)
+    parser.add_argument("-max_tgt_len", default=5000, type=int) # max size for the slide
 
     parser.add_argument("-param_init", default=0, type=float)
     parser.add_argument("-param_init_glorot", type=str2bool, nargs='?', const=True, default=True)
@@ -74,7 +75,7 @@ if __name__ == '__main__':
 
     parser.add_argument('-visible_gpus', default='2', type=str)
     parser.add_argument('-gpu_ranks', default='0', type=str)
-    parser.add_argument('-log_file', default='../logs/cnndm.log')
+    parser.add_argument('-log_file', default='../logs/slide_gen.log')
     parser.add_argument('-seed', default=666, type=int)
 
     parser.add_argument("-test_all", type=str2bool, nargs='?', const=True, default=False)
