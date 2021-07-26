@@ -252,7 +252,6 @@ class BertEmbeddings(nn.Module):
             token_sections = token_sections.unsqueeze(0).expand_as(input_ids)
         if token_type_ids is None:
             token_type_ids = torch.zeros_like(input_ids)
-
         words_embeddings = self.word_embeddings(input_ids)
         position_embeddings = self.position_embeddings(position_ids)
         section_embeddings = self.section_embedding(token_sections)

@@ -28,16 +28,16 @@ class Batch(object):
             pre_clss = [x[5] for x in data]
             pre_src_sent_labels = [x[6] for x in data]
 
-            src = torch.tensor(self._pad(pre_src, 0))
-            tgt = torch.tensor(self._pad(pre_tgt, 0))
-            segs = torch.tensor(self._pad(pre_segs, 0))
-            token_sections = torch.tensor(self._pad(pre_token_sections, 0))
-            mask_src = ~ (src == 0)
+            src = torch.tensor(self._pad(pre_src, 0)).to(int)
+            tgt = torch.tensor(self._pad(pre_tgt, 0)).to(int)
+            segs = torch.tensor(self._pad(pre_segs, 0)).to(int)
+            token_sections = torch.tensor(self._pad(pre_token_sections, 0)).to(int)
+            mask_src = ~ (src == 0).to(int)
             mask_tgt = ~ (tgt == 0)
 
-            clss = torch.tensor(self._pad(pre_clss, -1))
-            src_sent_labels = torch.tensor(self._pad(pre_src_sent_labels, 0))
-            sections = torch.tensor(self._pad(pre_sections, 0))
+            clss = torch.tensor(self._pad(pre_clss, -1)).to(int)
+            src_sent_labels = torch.tensor(self._pad(pre_src_sent_labels, 0)).to(int)
+            sections = torch.tensor(self._pad(pre_sections, 0)).to(int)
             mask_cls = ~ (clss == -1)
             clss[clss == -1] = 0
             setattr(self, 'clss', clss.to(device))

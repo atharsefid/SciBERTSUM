@@ -67,6 +67,7 @@ class ExtSummarizer(nn.Module):
         self.device = device_id
         self.bert = Bert(args.large, args.temp_dir, args.finetune_bert)
         self.doc_len = args.max_pos
+        self.chunk_size = args.chunk_size
         self.config = LongFormerConfig(hidden_size=self.bert.model.config.hidden_size,
                                        intermediate_size=args.ext_ff_size,
                                        num_hidden_layers=args.ext_layers,
@@ -93,22 +94,10 @@ class ExtSummarizer(nn.Module):
         self.to(device_id)
 
     def forward(self, src, sections, token_sections, segs, clss, mask_src, mask_cls):
-        # print('-' * 200)
-        # # batch size must be 1
-        # print('src:', src.shape)
-        # print('segs:', segs.shape)
-        # print('clss:', clss.shape)
-        # print('mask_src:', mask_src.shape)
-        # print('mask_cls:', mask_cls.shape)
-        # print('section shape:', sections.shape)
-        # print(' token_sections:', token_sections.shape)
 
-        top_vec = self.bert(src, token_sections, segs, mask_src)
-        sents_vec = top_vec[torch.arange(top_vec.size(0)).unsqueeze(1), clss]
+        sents_vec = self.chunked_sent_vectors(src[0], clss[0], token_sections[0], segs[0], mask_src[0])
+
         sents_vec = sents_vec * mask_cls[:, :, None].float()
-        # print('-------')
-        # print('sents_vec:', sents_vec.shape)
-        # print('sent_vec masks:', mask_cls.shape)
         # ###################################################################################
         # prepare sents_vec for long former
         inputs_embeds = sents_vec
@@ -139,6 +128,49 @@ class ExtSummarizer(nn.Module):
         sent_scores = self.ext_layer(inputs_embeds, sections, attention_mask, extended_attention_mask).squeeze(-1)
         return sent_scores, extended_attention_mask
 
+    def _pad_to(self, data, pad_id=0):
+        data = torch.cat((data, pad_id * torch.ones((max(self.chunk_size - data.shape[0],self.chunk_size)))
+                          .to(self.device).to(int)), 0)
+        return data
+
+    def chunked_sent_vectors(self,src, clss, token_sections, segs, mask_src):
+        """
+        This function divides the document into chunks of size= self.chunk_size and generates the sentence vectors
+        We assume the batch size is 1 here. Maybe need to update the code for larger batch sizes.
+        """
+        def _chunked_sent_vectors(start_index, end_index, start_sent_id, end_sent_id):
+
+            cur_src = src[start_index:end_index]
+            assert cur_src[0].item() == 101, f" The chunk does not start with 101"
+            assert cur_src[-1].item() == 102, f" The chunk doesn't end with 102"
+            cur_src = self._pad_to(cur_src)
+            cur_segs = self._pad_to(segs[start_index: end_index])
+            cur_token_sections = self._pad_to(token_sections[start_index: end_index])
+            cur_mask_src = self._pad_to(mask_src[start_index:end_index])
+            cur_clss = clss[start_sent_id: end_sent_id]
+
+            top_vec = self.bert(cur_src.unsqueeze(0), cur_token_sections.unsqueeze(0), cur_segs.unsqueeze(0),
+                                cur_mask_src.unsqueeze(0))[0]
+            sent_vectors = top_vec[cur_clss - start_index]
+            return sent_vectors
+
+
+        start_index = 0
+        start_sent_id = 0
+        sentence_vectors = []
+        for i, cls in enumerate(clss):
+            if cls - start_index > self.chunk_size:
+                end_index = clss[i - 1]
+                sent_vecs = _chunked_sent_vectors(start_index, end_index, start_sent_id, i-1)
+                sentence_vectors.append(sent_vecs)
+                start_index = end_index
+                start_sent_id = i - 1
+        # handle the remaining items that do not fit in memory
+        end_index = src.shape[0]
+        sent_vecs = _chunked_sent_vectors(start_index, end_index, start_sent_id, clss.shape[0])
+        sentence_vectors.append(sent_vecs)
+        return torch.cat(sentence_vectors, 0)
+
     @staticmethod
     def _merge_to_attention_mask(attention_mask: torch.Tensor, global_attention_mask: torch.Tensor):
         # longformer self attention expects attention mask to have 0 (no attn), 1 (local attn), 2 (global attn)
@@ -151,6 +183,44 @@ class ExtSummarizer(nn.Module):
             # if no `attention_mask` is given
             attention_mask = global_attention_mask + 1
         return attention_mask
+
+    def _pad_to_chunk_size(self, inputs_embeds: torch.Tensor, attention_mask: torch.Tensor, sections: torch.Tensor,
+                            position_ids: torch.Tensor, pad_token_id: int):
+        """A helper function to pad tokens and mask to work with implementation of Longformer self-attention."""
+        # padding
+        attention_window = (
+            self.config.attention_window
+            if isinstance(self.config.attention_window, int)
+            else max(self.config.attention_window)
+        )
+
+        assert attention_window % 2 == 0, f"`attention_window` should be an even value. Given {attention_window}"
+        input_shape = inputs_embeds.shape
+        batch_size, seq_len = input_shape[:2]
+
+        padding_len = (attention_window - seq_len % attention_window) % attention_window
+        if padding_len > 0:
+            # logger.info(
+            #     "Input ids are automatically padded from {} to {} to be a multiple of `config.attention_window`: {}".format(
+            #         seq_len, seq_len + padding_len, attention_window
+            #     )
+            # )
+            if position_ids is not None:
+                # pad with position_id = pad_token_id as in modeling_roberta.RobertaEmbeddings
+                position_ids = F.pad(position_ids, [0, padding_len], value=pad_token_id)
+            if inputs_embeds is not None:
+                input_ids_padding = inputs_embeds.new_full(
+                    (batch_size, padding_len),
+                    self.config.pad_token_id,
+                    dtype=torch.long,
+                )
+                inputs_embeds_padding = self.bert.model.embeddings(input_ids_padding)
+                inputs_embeds = torch.cat([inputs_embeds, inputs_embeds_padding], dim=-2)
+
+            attention_mask = F.pad(attention_mask, [0, padding_len], value=False)  # no attention on the padding tokens
+            sections = F.pad(sections, [0, padding_len], value=False)
+
+        return padding_len, inputs_embeds, attention_mask, sections, position_ids
 
     def _pad_to_window_size(self, inputs_embeds: torch.Tensor, attention_mask: torch.Tensor, sections: torch.Tensor,
                             position_ids: torch.Tensor, pad_token_id: int):
