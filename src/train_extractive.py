@@ -21,7 +21,7 @@ from others.log import logger, init_logger
 
 model_flags = ['hidden_size', 'ff_size', 'heads', 'inter_layers', 'encoder', 'ff_actv', 'use_interval', 'rnn_size']
 
-
+torch.autograd.set_detect_anomaly(True) # fix
 class ErrorHandler(object):
     """A class that listens for exceptions in children processes and propagates
     the tracebacks to the parent process."""

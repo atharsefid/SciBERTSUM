@@ -318,6 +318,7 @@ class Trainer(object):
             sent_scores, mask = self.model(src, sections, token_sections, segs, clss, mask, mask_cls)
 
             sent_scores = sent_scores[:, :sent_count]  # remove padded items from returned scores
+
             loss = self.loss(sent_scores, labels.float())
             loss = (loss * mask_cls.float()).sum()
             (loss / loss.numel()).backward()

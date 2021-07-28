@@ -8,7 +8,8 @@ from models.optimizers import Optimizer
 from others.log import logger
 from torch.nn import functional as F
 from torch import Tensor, device
-
+import random
+import numpy as np
 
 def build_optim(args, model, checkpoint):
     """ Build optimizer """
@@ -75,10 +76,11 @@ class ExtSummarizer(nn.Module):
                                        hidden_dropout_prob=args.ext_dropout)
         self.ext_layer = LongExtTransformerEncoder(self.config)
 
-        if self.doc_len > 512:
+        if self.chunk_size > 512:
             my_pos_embeddings = nn.Embedding(self.doc_len, self.bert.model.config.hidden_size)
             my_pos_embeddings.weight.data[:512] = self.bert.model.embeddings.position_embeddings.weight.data
-            my_pos_embeddings.weight.data[512:] = self.bert.model.embeddings.position_embeddings.weight.data[-1][None, :].repeat(self.doc_len - 512, 1)
+            my_pos_embeddings.weight.data[512:] = self.bert.model.embeddings.position_embeddings.weight.data[-1][None,
+                                                  :].repeat(self.doc_len - 512, 1)
             self.bert.model.embeddings.position_embeddings = my_pos_embeddings
 
         if checkpoint:
@@ -91,6 +93,7 @@ class ExtSummarizer(nn.Module):
                 for p in self.ext_layer.parameters():
                     if p.dim() > 1:
                         xavier_uniform_(p)
+        self.sigmoid = nn.Sigmoid()
         self.to(device_id)
 
     def forward(self, src, sections, token_sections, segs, clss, mask_src, mask_cls):
@@ -103,8 +106,10 @@ class ExtSummarizer(nn.Module):
         inputs_embeds = sents_vec
         attention_mask = mask_cls
         input_shape = sents_vec.size()[:-1]
-        # todo generate global attention indices
-        global_attention_mask = None  # fix
+
+        # todo generate global attention indices fix
+        global_attention_mask = self.build_global_attention_mask(sections[0])
+
         # merge `global_attention_mask` and `attention_mask`
         if global_attention_mask is not None:
             attention_mask = self._merge_to_attention_mask(attention_mask, global_attention_mask)
@@ -123,23 +128,45 @@ class ExtSummarizer(nn.Module):
 
         # We can provide a self-attention mask of dimensions [batch_size, from_seq_length, to_seq_length]
         # ourselves in which case we just need to make it broadcastable to all heads.
-        extended_attention_mask: torch.Tensor = self.get_extended_attention_mask(attention_mask, input_shape, device)[:, 0, 0, :]
+        extended_attention_mask: torch.Tensor = self.get_extended_attention_mask(attention_mask, input_shape, device)[:,
+                                                0, 0, :]
 
         sent_scores = self.ext_layer(inputs_embeds, sections, attention_mask, extended_attention_mask).squeeze(-1)
+        sent_scores = self.sigmoid(sent_scores)
         return sent_scores, extended_attention_mask
 
+    def build_global_attention_mask(self, sections):
+        if self.args.global_attention == 0:
+            return None
+        elif self.args.global_attention == 1:
+            # set the attention size to the number of sentences  at max
+            doc_size = sections.shape[0]
+            attention_size = int(self.args.global_attention_ratio * doc_size)
+            attentions = [random.randrange(0, doc_size, 1) for _ in range(attention_size)]
+        elif self.args.global_attention == 2:
+            attentions = []
+            sections_count = sections[-1].item + 1
+            for index in range(sections_count):
+                attentions.append((sections == index).nonzero(as_tuple=True)[0])
+        attentions_tensor = np.zeros(sections.shape)
+        attentions_tensor[attentions]=1
+        attentions_tensor = torch.Tensor(attentions_tensor).to(self.device).unsqueeze(0)
+        return attentions_tensor
+
     def _pad_to(self, data, pad_id=0):
-        data = torch.cat((data, pad_id * torch.ones((max(self.chunk_size - data.shape[0],self.chunk_size)))
+
+        data = torch.cat((data, pad_id * torch.ones((self.chunk_size - data.shape[0]))
                           .to(self.device).to(int)), 0)
         return data
 
-    def chunked_sent_vectors(self,src, clss, token_sections, segs, mask_src):
+    def chunked_sent_vectors(self, src, clss, token_sections, segs, mask_src):
         """
         This function divides the document into chunks of size= self.chunk_size and generates the sentence vectors
         We assume the batch size is 1 here. Maybe need to update the code for larger batch sizes.
         """
-        def _chunked_sent_vectors(start_index, end_index, start_sent_id, end_sent_id):
 
+        def _chunked_sent_vectors(start_index, end_index, start_sent_id, end_sent_id):
+            assert end_index - start_index < self.chunk_size, f" The current chunk has size {end_index - start_index} which is bigger than the size {self.chunk_size}| start: {start_index}, end: {end_index}"
             cur_src = src[start_index:end_index]
             assert cur_src[0].item() == 101, f" The chunk does not start with 101"
             assert cur_src[-1].item() == 102, f" The chunk doesn't end with 102"
@@ -148,25 +175,26 @@ class ExtSummarizer(nn.Module):
             cur_token_sections = self._pad_to(token_sections[start_index: end_index])
             cur_mask_src = self._pad_to(mask_src[start_index:end_index])
             cur_clss = clss[start_sent_id: end_sent_id]
-
             top_vec = self.bert(cur_src.unsqueeze(0), cur_token_sections.unsqueeze(0), cur_segs.unsqueeze(0),
                                 cur_mask_src.unsqueeze(0))[0]
             sent_vectors = top_vec[cur_clss - start_index]
             return sent_vectors
 
-
         start_index = 0
         start_sent_id = 0
         sentence_vectors = []
         for i, cls in enumerate(clss):
-            if cls - start_index > self.chunk_size:
+            if cls - start_index >= self.chunk_size:
                 end_index = clss[i - 1]
-                sent_vecs = _chunked_sent_vectors(start_index, end_index, start_sent_id, i-1)
+                sent_vecs = _chunked_sent_vectors(start_index, end_index, start_sent_id, i - 1)
                 sentence_vectors.append(sent_vecs)
                 start_index = end_index
                 start_sent_id = i - 1
         # handle the remaining items that do not fit in memory
         end_index = src.shape[0]
+        if end_index - start_index >= self.chunk_size:  # trim the last
+            end_index = start_index + self.chunk_size-1
+            src[end_index - 1] = 102
         sent_vecs = _chunked_sent_vectors(start_index, end_index, start_sent_id, clss.shape[0])
         sentence_vectors.append(sent_vecs)
         return torch.cat(sentence_vectors, 0)
@@ -183,44 +211,6 @@ class ExtSummarizer(nn.Module):
             # if no `attention_mask` is given
             attention_mask = global_attention_mask + 1
         return attention_mask
-
-    def _pad_to_chunk_size(self, inputs_embeds: torch.Tensor, attention_mask: torch.Tensor, sections: torch.Tensor,
-                            position_ids: torch.Tensor, pad_token_id: int):
-        """A helper function to pad tokens and mask to work with implementation of Longformer self-attention."""
-        # padding
-        attention_window = (
-            self.config.attention_window
-            if isinstance(self.config.attention_window, int)
-            else max(self.config.attention_window)
-        )
-
-        assert attention_window % 2 == 0, f"`attention_window` should be an even value. Given {attention_window}"
-        input_shape = inputs_embeds.shape
-        batch_size, seq_len = input_shape[:2]
-
-        padding_len = (attention_window - seq_len % attention_window) % attention_window
-        if padding_len > 0:
-            # logger.info(
-            #     "Input ids are automatically padded from {} to {} to be a multiple of `config.attention_window`: {}".format(
-            #         seq_len, seq_len + padding_len, attention_window
-            #     )
-            # )
-            if position_ids is not None:
-                # pad with position_id = pad_token_id as in modeling_roberta.RobertaEmbeddings
-                position_ids = F.pad(position_ids, [0, padding_len], value=pad_token_id)
-            if inputs_embeds is not None:
-                input_ids_padding = inputs_embeds.new_full(
-                    (batch_size, padding_len),
-                    self.config.pad_token_id,
-                    dtype=torch.long,
-                )
-                inputs_embeds_padding = self.bert.model.embeddings(input_ids_padding)
-                inputs_embeds = torch.cat([inputs_embeds, inputs_embeds_padding], dim=-2)
-
-            attention_mask = F.pad(attention_mask, [0, padding_len], value=False)  # no attention on the padding tokens
-            sections = F.pad(sections, [0, padding_len], value=False)
-
-        return padding_len, inputs_embeds, attention_mask, sections, position_ids
 
     def _pad_to_window_size(self, inputs_embeds: torch.Tensor, attention_mask: torch.Tensor, sections: torch.Tensor,
                             position_ids: torch.Tensor, pad_token_id: int):

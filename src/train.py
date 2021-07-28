@@ -24,16 +24,20 @@ if __name__ == '__main__':
     parser.add_argument("-encoder", default='bert', type=str, choices=['bert', 'baseline'])
     parser.add_argument("-mode", default='train', type=str, choices=['train', 'validate', 'test'])
     parser.add_argument("-bert_data_path", default='../bert_data')
-    parser.add_argument("-model_path", default='../models/')
-    parser.add_argument("-tensorboard_log_path", default='../tensorboard_log/')
+    # parser.add_argument("-model_path", default='../models/') #fix
+    # parser.add_argument("-tensorboard_log_path", default='../tensorboard_log/')# fix
+    parser.add_argument("-model_path", default='../alakimodels/')  # fix
+    parser.add_argument("-tensorboard_log_path", default='../alakitensorboard_log/')  # fix
     parser.add_argument("-result_path", default='../results/')
     parser.add_argument("-temp_dir", default='../temp')
 
     parser.add_argument("-batch_size", default=1, type=int)
     parser.add_argument("-test_batch_size", default=1, type=int)
 
-    parser.add_argument("-max_pos", default=20480, type=int)
-    parser.add_argument("-chunk_size", default=3072, type=int)
+    # parser.add_argument("-max_pos", default=20480, type=int) #fix
+    # parser.add_argument("-chunk_size", default=3072, type=int) # fix
+    parser.add_argument("-max_pos", default=10240, type=int) #fix
+    parser.add_argument("-chunk_size", default=512, type=int) # fix
     parser.add_argument("-use_interval", type=str2bool, nargs='?', const=True, default=True)
     parser.add_argument("-large", type=str2bool, nargs='?', const=True, default=False)
 
@@ -44,6 +48,10 @@ if __name__ == '__main__':
     parser.add_argument("-enc_ff_size", default=512, type=int)
     parser.add_argument("-enc_dropout", default=0.2, type=float)
     parser.add_argument("-enc_layers", default=6, type=int)
+
+    # global attention params
+    parser.add_argument('-global_attention', default=1, type=int, choices=[0,1,2], help=" global attention types:0,1,2. 0: no global attention, 1: global attention at random indices, 2: global attention at the beginning and end of the sections  ")
+    parser.add_argument('-global_attention_ratio', default=0.2, type=float, help="ratio of global attention indices chosen at random")
 
     # params for EXT
     parser.add_argument("-ext_dropout", default=0.2, type=float)
