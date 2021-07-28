@@ -1,7 +1,5 @@
 import math
-
 from typing import Optional, Tuple
-
 import torch
 import torch.nn as nn
 import torch.utils.checkpoint
@@ -94,7 +92,7 @@ class LongTransformerEncoderLayer(nn.Module):
         self.layer_norm = nn.LayerNorm(self.config.hidden_size, eps=1e-6)
         self.dropout = nn.Dropout(self.config.hidden_dropout_prob)
 
-    def forward(self, iter, inputs,
+    def forward(self, iter, inputs, sections,
                 attention_mask,
                 layer_head_mask=None,
                 is_index_masked=None,
@@ -106,6 +104,7 @@ class LongTransformerEncoderLayer(nn.Module):
             input_norm = inputs
         # context = self.self_attn(input_norm, attention_mask=attention_mask)
         output = self.self_attn(input_norm,
+                                sections,
                                 attention_mask,
                                 layer_head_mask,
                                 is_index_masked,
@@ -146,6 +145,7 @@ class LongExtTransformerEncoder(nn.Module):
 
         for i in range(self.config.num_hidden_layers):
             x = self.transformer_inter[i](i, x,
+                                          sections=sections,
                                           attention_mask=extended_mask,
                                           layer_head_mask=None,
                                           is_index_masked=is_index_masked,

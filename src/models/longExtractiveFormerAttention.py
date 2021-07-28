@@ -124,6 +124,7 @@ class LongformerSelfAttention(nn.Module):
     def forward(
         self,
         hidden_states,
+        sections,
         attention_mask=None,
         layer_head_mask=None,
         is_index_masked=None,  # indices that need to be masked
@@ -147,7 +148,7 @@ class LongformerSelfAttention(nn.Module):
         query_vectors = self.query(hidden_states)
         key_vectors = self.key(hidden_states)
         value_vectors = self.value(hidden_states)
-
+        # seq_len is the sentence count in our case !
         seq_len, batch_size, embed_dim = hidden_states.size()
         assert (
             embed_dim == self.embed_dim
@@ -160,7 +161,7 @@ class LongformerSelfAttention(nn.Module):
         key_vectors = key_vectors.view(seq_len, batch_size, self.num_heads, self.head_dim).transpose(0, 1)
 
         attn_scores = self._sliding_chunks_query_key_matmul(
-            query_vectors, key_vectors, self.one_sided_attn_window_size
+            query_vectors, key_vectors, sections, self.one_sided_attn_window_size
         )
 
         # values to pad for attention probs        # only locals are false        # global and masked ones are true
@@ -362,25 +363,22 @@ class LongformerSelfAttention(nn.Module):
         ending_mask = ending_mask.expand(ending_input.size())
         ending_input.masked_fill_(ending_mask == 1, -float("inf"))  # `== 1` converts to bool or uint8
 
-    def _sliding_chunks_query_key_matmul(self, query: torch.Tensor, key: torch.Tensor, window_overlap: int):
+    def _sliding_chunks_query_key_matmul(self, query: torch.Tensor, key: torch.Tensor, sections: torch.Tensor, window_overlap: int):
         """
         Matrix multiplication of query and key tensors using with a sliding window attention pattern. This
         implementation splits the input into overlapping chunks of size 2w (e.g. 512 for pretrained Longformer) with an
         overlap of size window_overlap
         """
         batch_size, seq_len, num_heads, head_dim = query.size()
-        assert (
-            seq_len % (window_overlap * 2) == 0
-        ), f"Sequence length should be multiple of {window_overlap * 2}. Given {seq_len}"
-        assert query.size() == key.size()
 
-        chunks_count = seq_len // window_overlap - 1
+
+        chunks_count = sections[-1]
 
         # group batch_size and num_heads dimensions into one, then chunk seq_len into chunks of size window_overlap * 2
         query = query.transpose(1, 2).reshape(batch_size * num_heads, seq_len, head_dim)
         key = key.transpose(1, 2).reshape(batch_size * num_heads, seq_len, head_dim)
 
-        query = self._chunk(query, window_overlap)
+        query = self._chunk(query, window_overlap) # fix change chunk based on sections
         key = self._chunk(key, window_overlap)
 
         # matrix multiplication
@@ -679,7 +677,7 @@ class LongformerSelfOutput(nn.Module):
 class LongFormerAttention(nn.Module):
     def __init__(self, config, layer_id=0):
         super().__init__()
-        self.self = LongformerSelfAttention(config, layer_id)
+        self.selfattn = LongformerSelfAttention(config, layer_id)
         self.output = LongformerSelfOutput(config)
         self.pruned_heads = set()
 
@@ -687,23 +685,24 @@ class LongFormerAttention(nn.Module):
         if len(heads) == 0:
             return
         heads, index = find_pruneable_heads_and_indices(
-            heads, self.self.num_attention_heads, self.self.attention_head_size, self.pruned_heads
+            heads, self.selfattn.num_attention_heads, self.selfattn.attention_head_size, self.pruned_heads
         )
 
         # Prune linear layers
-        self.self.query = prune_linear_layer(self.self.query, index)
-        self.self.key = prune_linear_layer(self.self.key, index)
-        self.self.value = prune_linear_layer(self.self.value, index)
+        self.selfattn.query = prune_linear_layer(self.selfattn.query, index)
+        self.selfattn.key = prune_linear_layer(self.selfattn.key, index)
+        self.selfattn.value = prune_linear_layer(self.selfattn.value, index)
         self.output.dense = prune_linear_layer(self.output.dense, index, dim=1)
 
         # Update hyper params and store pruned heads
-        self.self.num_attention_heads = self.self.num_attention_heads - len(heads)
-        self.self.all_head_size = self.self.attention_head_size * self.self.num_attention_heads
+        self.selfattn.num_attention_heads = self.selfattn.num_attention_heads - len(heads)
+        self.selfattn.all_head_size = self.selfattn.attention_head_size * self.selfattn.num_attention_heads
         self.pruned_heads = self.pruned_heads.union(heads)
 
     def forward(
         self,
         hidden_states,
+        sections,
         attention_mask=None,
         layer_head_mask=None,
         is_index_masked=None,
@@ -711,8 +710,9 @@ class LongFormerAttention(nn.Module):
         is_global_attn=None,
         output_attentions=False,
     ):
-        self_outputs = self.self(
+        self_outputs = self.selfattn(
             hidden_states,
+            sections,
             attention_mask=attention_mask,
             layer_head_mask=layer_head_mask,
             is_index_masked=is_index_masked,
