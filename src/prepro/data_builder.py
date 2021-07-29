@@ -234,6 +234,7 @@ class BertData:
         self.sep_token = '[SEP]'
         self.cls_token = '[CLS]'
         self.pad_token = '[PAD]'
+        self.sec_token = '[SEC]'
         self.tgt_bos = '[unused0]'
         self.tgt_eos = '[unused1]'
         self.tgt_sent_split = '[unused2]'
@@ -263,6 +264,18 @@ class BertData:
         if not is_test and len(src) < self.args.min_src_nsents:
             return None
 
+        sections_count = sections[-1]
+        section_id = 1
+        all_sections = []
+        cur_section =[]
+        for sent_sec, sent in zip(src, sections):
+            if sent_sec != section_id:
+                all_sections.append(cur_section)
+                cur_section = []
+                section_id +=1
+            cur_section.append( sent_sec)
+        all_sections.append(cur_section)
+        assert len(all_sections) == sections[-1] and len(sections) == sum(len(cur_section) for cur_sec in all_sections)
         src_txt = [' '.join(sent) for sent in src]
         text = ' {} {} '.format(self.sep_token, self.cls_token).join(src_txt)
 

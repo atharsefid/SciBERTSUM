@@ -71,3 +71,4 @@ python train.py -mode test  -test_batch_size 1 -bert_data_path ../bert_data -log
 ```
 
 
+

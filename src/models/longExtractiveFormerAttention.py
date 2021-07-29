@@ -332,9 +332,10 @@ class LongformerSelfAttention(nn.Module):
         return chunked_hidden_states
 
     @staticmethod
-    def _chunk(hidden_states, window_overlap):
+    def _chunk(hidden_states, sections):
         """convert into overlapping chunks. Chunk size = 2w, overlap size = w"""
-
+        sections_count = sections[-1]
+        hidden_sections =
         # non-overlapping chunks of size = 2w
         hidden_states = hidden_states.view(
             hidden_states.size(0),
@@ -497,7 +498,7 @@ class LongformerSelfAttention(nn.Module):
         key_vectors,
         query_vectors,
         max_num_global_attn_indices,
-        is_index_global_attn_nonzero,  # nonzero indices of global attentions (as tuple: better way to store sparse tentors)
+        is_index_global_attn_nonzero,  # nonzero indices of global attentions (as tuple: better way to store sparse tensors)
         is_local_index_global_attn_nonzero,  # global attentions in the condensed setting to keep all globals in the beginning of the batch
         is_local_index_no_global_attn_nonzero,
     ):
@@ -532,17 +533,13 @@ class LongformerSelfAttention(nn.Module):
         # cut local attn probs to global only
         attn_probs_only_global = attn_probs.narrow(-1, 0, max_num_global_attn_indices)
         # get value vectors for global only
-        # value_vectors_only_global = value_vectors.new_zeros(
-        #     batch_size, max_num_global_attn_indices, self.num_heads, self.head_dim
-        # )
-        # value_vectors_only_global[is_local_index_global_attn_nonzero] = value_vectors[is_index_global_attn_nonzero]
+        value_vectors_only_global = value_vectors.new_zeros(
+            batch_size, max_num_global_attn_indices, self.num_heads, self.head_dim
+        )
+        value_vectors_only_global.requires_grad = False
+        value_vectors.requires_grad = False
+        value_vectors_only_global[is_local_index_global_attn_nonzero] = value_vectors[is_index_global_attn_nonzero]
 
-        value_vectors_only_global = np.zeros([batch_size, max_num_global_attn_indices, self.num_heads, self.head_dim])
-        value_vectors_only_global[is_local_index_global_attn_nonzero] = value_vectors[is_index_global_attn_nonzero].detach().numpy()
-        if value_vectors.get_device()>=0:
-            value_vectors_only_global = torch.Tensor(value_vectors_only_global).to(value_vectors.get_device())
-        else:
-            value_vectors_only_global = torch.Tensor(value_vectors_only_global)
         # use `matmul` because `einsum` crashes sometimes with fp16
         # attn = torch.einsum('blhs,bshd->blhd', (selected_attn_probs, selected_v))
         # compute attn output only global
