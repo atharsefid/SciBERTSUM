@@ -534,17 +534,14 @@ class LongformerSelfAttention(nn.Module):
         # cut local attn probs to global only
         attn_probs_only_global = attn_probs.narrow(-1, 0, max_num_global_attn_indices)
         # get value vectors for global only
-        # value_vectors_only_global = value_vectors.new_zeros(
-        #     batch_size, max_num_global_attn_indices, self.num_heads, self.head_dim
-        # )
-        # value_vectors_only_global[is_local_index_global_attn_nonzero] = value_vectors[is_index_global_attn_nonzero]
+        value_vectors_only_global = value_vectors.new_zeros(
+            batch_size, max_num_global_attn_indices, self.num_heads, self.head_dim
+        ).detach()
+        value_vectors = value_vectors.detach()
 
-        value_vectors_only_global = np.zeros([batch_size, max_num_global_attn_indices, self.num_heads, self.head_dim])
-        value_vectors_only_global[is_local_index_global_attn_nonzero] = value_vectors[is_index_global_attn_nonzero].detach().numpy()
-        if value_vectors.get_device()>=0:
-            value_vectors_only_global = torch.Tensor(value_vectors_only_global).to(value_vectors.get_device())
-        else:
-            value_vectors_only_global = torch.Tensor(value_vectors_only_global)
+        value_vectors_only_global[is_local_index_global_attn_nonzero] = value_vectors[is_index_global_attn_nonzero]
+
+
         # use `matmul` because `einsum` crashes sometimes with fp16
         # attn = torch.einsum('blhs,bshd->blhd', (selected_attn_probs, selected_v))
         # compute attn output only global

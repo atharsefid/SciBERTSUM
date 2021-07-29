@@ -125,7 +125,7 @@ class ExtSummarizer(nn.Module):
         assert (
                 inputs_embeds.shape[1] % self.config.attention_window[0] == 0
         ), f"padded inputs_embeds of size {inputs_embeds.shape[1]} is not a multiple of window size {self.config.attention_window}"
-
+        # print('---inputs_embed ', inputs_embeds.shape)
         # We can provide a self-attention mask of dimensions [batch_size, from_seq_length, to_seq_length]
         # ourselves in which case we just need to make it broadcastable to all heads.
         extended_attention_mask: torch.Tensor = self.get_extended_attention_mask(attention_mask, input_shape, device)[:,

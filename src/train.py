@@ -24,20 +24,20 @@ if __name__ == '__main__':
     parser.add_argument("-encoder", default='bert', type=str, choices=['bert', 'baseline'])
     parser.add_argument("-mode", default='train', type=str, choices=['train', 'validate', 'test'])
     parser.add_argument("-bert_data_path", default='../bert_data')
-    # parser.add_argument("-model_path", default='../models/') #fix
-    # parser.add_argument("-tensorboard_log_path", default='../tensorboard_log/')# fix
-    parser.add_argument("-model_path", default='../alakimodels/')  # fix
-    parser.add_argument("-tensorboard_log_path", default='../alakitensorboard_log/')  # fix
+    parser.add_argument("-model_path", default='../models/') #fix
+    parser.add_argument("-tensorboard_log_path", default='../tensorboard_log/')# fix
+    # parser.add_argument("-model_path", default='../alakimodels/')  # fix
+    # parser.add_argument("-tensorboard_log_path", default='../alakitensorboard_log/')  # fix
     parser.add_argument("-result_path", default='../results/')
     parser.add_argument("-temp_dir", default='../temp')
 
     parser.add_argument("-batch_size", default=1, type=int)
     parser.add_argument("-test_batch_size", default=1, type=int)
 
-    # parser.add_argument("-max_pos", default=20480, type=int) #fix
-    # parser.add_argument("-chunk_size", default=3072, type=int) # fix
-    parser.add_argument("-max_pos", default=10240, type=int) #fix
-    parser.add_argument("-chunk_size", default=512, type=int) # fix
+    parser.add_argument("-max_pos", default=20480, type=int) #fix
+    parser.add_argument("-chunk_size", default=3072, type=int) # fix
+    # parser.add_argument("-max_pos", default=1024, type=int) #fix
+    # parser.add_argument("-chunk_size", default=512, type=int) # fix
     parser.add_argument("-use_interval", type=str2bool, nargs='?', const=True, default=True)
     parser.add_argument("-large", type=str2bool, nargs='?', const=True, default=False)
 
