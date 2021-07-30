@@ -165,6 +165,8 @@ class LongformerSelfAttention(nn.Module):
         )
 
         # values to pad for attention probs        # only locals are false        # global and masked ones are true
+        print('attention_mask', attention_mask)
+        attention_mask = attention_mask.to(int)
         remove_from_windowed_attention_mask = (attention_mask != 0)[:, :, None, None]
 
         # cast to fp32/fp16 then replace 1's with -inf
@@ -174,7 +176,7 @@ class LongformerSelfAttention(nn.Module):
         # print('float_mask shape', float_mask.shape, attention_mask.shape)
         # diagonal mask with zeros everywhere and -inf inplace of padding
         diagonal_mask = self._sliding_chunks_query_key_matmul(
-            float_mask.new_ones(size=float_mask.size()), float_mask, self.one_sided_attn_window_size
+            float_mask.new_ones(size=float_mask.size()), float_mask,sections, self.one_sided_attn_window_size
         )
 
         # pad local attention probs
@@ -332,10 +334,8 @@ class LongformerSelfAttention(nn.Module):
         return chunked_hidden_states
 
     @staticmethod
-    def _chunk(hidden_states, sections):
+    def _chunk(hidden_states, window_overlap):
         """convert into overlapping chunks. Chunk size = 2w, overlap size = w"""
-        #sections_count = sections[-1]
-        # hidden_sections =
         # non-overlapping chunks of size = 2w
         hidden_states = hidden_states.view(
             hidden_states.size(0),
@@ -371,9 +371,12 @@ class LongformerSelfAttention(nn.Module):
         overlap of size window_overlap
         """
         batch_size, seq_len, num_heads, head_dim = query.size()
+        assert (
+                seq_len % (window_overlap * 2) == 0
+        ), f"Sequence length should be multiple of {window_overlap * 2}. Given {seq_len}"
+        assert query.size() == key.size()
 
-
-        chunks_count = sections[-1]
+        chunks_count = seq_len // window_overlap - 1
 
         # group batch_size and num_heads dimensions into one, then chunk seq_len into chunks of size window_overlap * 2
         query = query.transpose(1, 2).reshape(batch_size * num_heads, seq_len, head_dim)

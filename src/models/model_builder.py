@@ -115,29 +115,27 @@ class ExtSummarizer(nn.Module):
         # merge `global_attention_mask` and `attention_mask`
         if global_attention_mask is not None:
             attention_mask = self._merge_to_attention_mask(attention_mask, global_attention_mask)
-
-        # position_ids = None
-        # padding_len, inputs_embeds, attention_mask, sections, position_ids = \
-        #     self._pad_to_window_size(
-        #         inputs_embeds=inputs_embeds,
-        #         attention_mask=attention_mask,
-        #         sections=sections,
-        #         position_ids=position_ids,
-        #         pad_token_id=self.config.pad_token_id)
-        # assert (
-        #         inputs_embeds.shape[1] % self.config.attention_window[0] == 0
-        # ), f"padded inputs_embeds of size {inputs_embeds.shape[1]} is not a multiple of window size {self.config.attention_window}"
-
+        position_ids = None
+        padding_len, inputs_embeds, attention_mask, sections, position_ids = \
+            self._pad_to_window_size(
+                inputs_embeds=inputs_embeds,
+                attention_mask=attention_mask,
+                sections=sections,
+                position_ids=position_ids,
+                pad_token_id=self.config.pad_token_id)
+        assert (
+                inputs_embeds.shape[1] % self.config.attention_window[0] == 0
+        ), f"padded inputs_embeds of size {inputs_embeds.shape[1]} is not a multiple of window size {self.config.attention_window}"
         # We can provide a self-attention mask of dimensions [batch_size, from_seq_length, to_seq_length]
         # ourselves in which case we just need to make it broadcastable to all heads.
         extended_attention_mask: torch.Tensor = self.get_extended_attention_mask(attention_mask, input_shape, device)[:,
                                                 0, 0, :]
-        print('---- extended_attention_mask', extended_attention_mask)
         sent_scores = self.ext_layer(inputs_embeds, sections, attention_mask, extended_attention_mask).squeeze(-1)
         sent_scores = self.sigmoid(sent_scores)
         return sent_scores, extended_attention_mask
 
     def build_global_attention_mask(self, sections):
+        print('self.args.global_attention',self.args.global_attention )
         if self.args.global_attention == 0:
             return None
         elif self.args.global_attention == 1:

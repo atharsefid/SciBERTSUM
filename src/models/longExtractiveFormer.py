@@ -142,7 +142,6 @@ class LongExtTransformerEncoder(nn.Module):
         is_index_masked = extended_mask < 0  # masking tokens (-10000) are true in and local(0) or global(+1000) attentions are False
         is_index_global_attn = extended_mask > 0  # indices with global attention are True others False
         is_global_attn = is_index_global_attn.flatten().any().item()  # True if at least one index with global attention
-
         for i in range(self.config.num_hidden_layers):
             x = self.transformer_inter[i](i, x,
                                           sections=sections,
