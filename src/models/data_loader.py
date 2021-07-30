@@ -185,23 +185,29 @@ class DataIterator(object):
         token_sections = ex['token_sections']
         section_ids = ex['section_ids']
         # todo check if section is working properly
-        end_id = [src[-1]]
-        lastIsCls = False
-        if len(src) > self.args.max_pos-1 and src[self.args.max_pos-1] == 101:
-            lastIsCls = True
-        src = src[:-1][:self.args.max_pos - 1] + end_id
-        segs = segs[:self.args.max_pos]
-        token_sections = token_sections[:self.args.max_pos]
-        max_sent_id = bisect.bisect_left(clss, self.args.max_pos)
+        max_pos = self.args.max_pos
+        max_sent_id = bisect.bisect_left(clss, max_pos)
+        max_sec_id = bisect.bisect_left(section_ids, max_pos)
+        # 30523 is the id of the [SEC]
+        if len(src) > self.args.max_pos-1 and src[self.args.max_pos-1] == 101: # ends with [CLS]
+            max_pos -= 1
+            max_sent_id -=1
+            if src[max_pos-1] == 30523: # ends with [SEC][CLS]
+                max_pos -=1
+                max_sec_id -=1
+        if len(src) > self.args.max_pos-1 and src[self.args.max_pos-1] == 30523: # [SEC]
+            max_pos -= 1
+            max_sec_id -=1
+        src = src[:max_pos]
+        src[-1] = 102
+        segs = segs[:max_pos]
+        token_sections = token_sections[:max_pos]
+
+
+        section_ids = section_ids[:max_sec_id]
         src_sent_labels = src_sent_labels[:max_sent_id]
         clss = clss[:max_sent_id]
-        max_sec_id = bisect.bisect_left(section_ids, self.args.max_pos)
-        section_ids = section_ids[:max_sec_id]
-        sections = sections[:max_sent_id]
-        if lastIsCls:
-            src_sent_labels = src_sent_labels[:max_sent_id-1]
-            clss = clss[:max_sent_id-1]
-            sections = sections[: max_sent_id-1]
+        sections = sections[: max_sent_id]
         # src_txt = src_txt[:max_sent_id]
 
         if is_test:

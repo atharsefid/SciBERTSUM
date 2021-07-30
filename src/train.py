@@ -34,10 +34,10 @@ if __name__ == '__main__':
     parser.add_argument("-batch_size", default=1, type=int)
     parser.add_argument("-test_batch_size", default=1, type=int)
 
-    parser.add_argument("-max_pos", default=20480, type=int) #fix
-    parser.add_argument("-chunk_size", default=3072, type=int) # fix
-    # parser.add_argument("-max_pos", default=2024, type=int) #fix
-    # parser.add_argument("-chunk_size", default=512, type=int) # fix
+    # parser.add_argument("-max_pos", default=20480, type=int) #fix
+    # parser.add_argument("-chunk_size", default=3072, type=int) # fix
+    parser.add_argument("-max_pos", default=2024, type=int) #fix
+    parser.add_argument("-chunk_size", default=213, type=int) # fix
     parser.add_argument("-use_interval", type=str2bool, nargs='?', const=True, default=True)
     parser.add_argument("-large", type=str2bool, nargs='?', const=True, default=False)
 

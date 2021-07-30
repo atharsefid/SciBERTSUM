@@ -165,7 +165,6 @@ class LongformerSelfAttention(nn.Module):
         )
 
         # values to pad for attention probs        # only locals are false        # global and masked ones are true
-        print('attention_mask', attention_mask)
         attention_mask = attention_mask.to(int)
         remove_from_windowed_attention_mask = (attention_mask != 0)[:, :, None, None]
 
