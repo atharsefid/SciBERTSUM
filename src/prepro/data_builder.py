@@ -46,7 +46,7 @@ def read_pdf_sections(paper, ignore_acknowledgement=False):
 
 def _extract_pdf_sections(paper):
     _, _, directory, name = paper.split('/')
-    outfile = open('../raw_data/' + directory + '/'+directory + '.sections.txt', 'w')
+    outfile = open('../raw_data/' + directory + '/' + directory + '.sections.txt', 'w')
     for line in read_pdf_sections(paper):
         outfile.write(line.strip() + '\n')
     outfile.close()
@@ -146,7 +146,7 @@ def _tokenize(papers, temp_dir):
 
     subprocess.call(command)
     # Check that the tokenized stories directory contains the same number of files as the original directory
-    assert len(os.listdir(temp_dir)) == len(papers),\
+    assert len(os.listdir(temp_dir)) == len(papers), \
         f"There are %i papers to tokenize, but destination directory contains  %i files." % (
             len(papers), len(os.listdir(temp_dir)),)
     # transfer the tokenize to the raw_data
@@ -230,7 +230,7 @@ class BertData:
     def __init__(self, args):
         self.args = args
         self.tokenizer = BertTokenizer.from_pretrained('bert-base-uncased', do_lower_case=True)
-
+        self.tokenizer.add_special_token("[SEC]")
         self.sep_token = '[SEP]'
         self.cls_token = '[CLS]'
         self.pad_token = '[PAD]'
@@ -241,6 +241,7 @@ class BertData:
         self.sep_vid = self.tokenizer.vocab[self.sep_token]
         self.cls_vid = self.tokenizer.vocab[self.cls_token]
         self.pad_vid = self.tokenizer.vocab[self.pad_token]
+        self.sec_vid = self.tokenizer.vocab[self.sec_token]
 
     def preprocess(self, src, sections, tgt, sent_labels, use_bert_basic_tokenizer=False, is_test=False):
 
@@ -249,7 +250,8 @@ class BertData:
 
         original_src_txt = [' '.join(s) for s in src]
 
-        idxs = [i for i, s in enumerate(src) if len(s) > self.args.min_src_ntokens_per_sent]  # indices of sentences that are of minimum length
+        idxs = [i for i, s in enumerate(src) if
+                len(s) > self.args.min_src_ntokens_per_sent]  # indices of sentences that are of minimum length
 
         _sent_labels = [0] * len(src)
         for l in sent_labels:
@@ -259,29 +261,39 @@ class BertData:
         sent_labels = [_sent_labels[i] for i in idxs]
         src = src[:self.args.max_src_nsents]
         sent_labels = sent_labels[:self.args.max_src_nsents]
-        _sections = [sections[i] for i in idxs]
-        _sections = _sections[:self.args.max_src_nsents]
+        sections = [sections[i] for i in idxs]
+        sections = sections[:self.args.max_src_nsents]
         if not is_test and len(src) < self.args.min_src_nsents:
             return None
 
         sections_count = sections[-1]
         section_id = 1
         all_sections = []
-        cur_section =[]
-        for sent_sec, sent in zip(src, sections):
+        cur_section = []
+        for sent, sent_sec in zip(src, sections):
             if sent_sec != section_id:
                 all_sections.append(cur_section)
                 cur_section = []
-                section_id +=1
-            cur_section.append( sent_sec)
+                section_id += 1
+            cur_section.append(sent)
         all_sections.append(cur_section)
-        assert len(all_sections) == sections[-1] and len(sections) == sum(len(cur_section) for cur_sec in all_sections)
-        src_txt = [' '.join(sent) for sent in src]
-        text = ' {} {} '.format(self.sep_token, self.cls_token).join(src_txt)
+        # print('-------',len(all_sections) , sections[-1] , len(sections) , sum([len(cur_sec) for cur_sec in all_sections]), len(sent_labels), len(src))
+        assert len(all_sections) == sections[-1] and len(sections) == sum(
+            [len(cur_sec) for cur_sec in all_sections]) == len(sent_labels) == len(src)
 
+        src_txts = []
+        for sec in all_sections:
+            sec_txts = []
+            for sent in sec:
+                sent_txt = ' '.join(sent)
+                sec_txts.append(sent_txt)
+            sec_txt = ' {} {} '.format(self.sep_token, self.cls_token).join(sec_txts)
+            sec_txt = self.cls_token + ' ' + sec_txt + ' ' + self.sep_token
+            src_txts.append(sec_txt)
+        text = ' {} '.format(self.sec_token).join(src_txts)
+
+        text = self.sec_token + ' ' + text
         src_subtokens = self.tokenizer.tokenize(text)
-
-        src_subtokens = [self.cls_token] + src_subtokens + [self.sep_token]
         src_subtoken_idxs = self.tokenizer.convert_tokens_to_ids(src_subtokens)
         # identify end of sents
         _segs = [-1] + [i for i, t in enumerate(src_subtoken_idxs) if t == self.sep_vid]
@@ -295,9 +307,10 @@ class BertData:
                 segments_ids += s * [0]
             else:
                 segments_ids += s * [1]
-            token_sections += s * [_sections[i]]
+            token_sections += s * [sections[i]]
 
         cls_ids = [i for i, t in enumerate(src_subtoken_idxs) if t == self.cls_vid]
+        sec_ids = [i for i, t in enumerate(src_subtoken_idxs) if t == self.sec_vid]
         sent_labels = sent_labels[:len(cls_ids)]
 
         tgt_subtokens_str = '[unused0] ' + ' [unused2] '.join(
@@ -313,15 +326,15 @@ class BertData:
         src_txt = [original_src_txt[i] for i in idxs]
 
         assert (len(token_sections) == len(segments_ids)), f'token sections and segment ids do not have same length'
-        assert (len(_sections) == len(sent_labels) == len(cls_ids)), \
-            f'preprocessed dimensions do not match {len(_sections)}, {len(sent_labels)}, {len(cls_ids)}'
-        return src_subtoken_idxs, sent_labels, tgt_subtoken_idxs, segments_ids, cls_ids, src_txt, tgt_txt, _sections, token_sections
+        assert (len(sections) == len(sent_labels) == len(cls_ids)), \
+            f'preprocessed dimensions do not match {len(sections)}, {len(sent_labels)}, {len(cls_ids)}'
+        return src_subtoken_idxs, sent_labels, tgt_subtoken_idxs, segments_ids, cls_ids, src_txt, tgt_txt, sections, token_sections, sec_ids
 
 
 def _get_text_clean_tika(xml_file):
     pages_text = []
-    _,_, directory, _ = xml_file.split('/')
-    clean_path = '../raw_data/' + directory +'/'+ directory+'.clean_tika.txt'
+    _, _, directory, _ = xml_file.split('/')
+    clean_path = '../raw_data/' + directory + '/' + directory + '.clean_tika.txt'
     with open(xml_file, "r") as file:
         content = "".join(file.readlines())
         bs_content = bs(content, "lxml")
@@ -462,10 +475,11 @@ def _format_to_bert(params):
 
         if b_data is None:
             continue
-        src_subtoken_idxs, sent_labels, tgt_subtoken_idxs, segments_ids, cls_ids, src_txt, tgt_txt, sections, token_sections = b_data
+        src_subtoken_idxs, sent_labels, tgt_subtoken_idxs, segments_ids, cls_ids, src_txt, tgt_txt, sections, token_sections, section_ids = b_data
         b_data_dict = {"src": src_subtoken_idxs, "tgt": tgt_subtoken_idxs,
                        "src_sent_labels": sent_labels, "segs": segments_ids, 'clss': cls_ids,
-                       'src_txt': src_txt, "tgt_txt": tgt_txt, "sections": sections, "token_sections": token_sections}
+                       'src_txt': src_txt, "tgt_txt": tgt_txt, "sections": sections, "token_sections": token_sections,
+                       "section_ids": section_ids}
         datasets.append(b_data_dict)
     logger.info('Processed %d instances.' % len(datasets))
     logger.info('Saving to %s' % save_file)

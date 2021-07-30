@@ -76,8 +76,9 @@ class BertTokenizer(object):
 
     def __init__(self, vocab_file, do_lower_case=True, max_len=None,
                  never_split=(
-                 "[UNK]", "[SEP]", "[PAD]", "[CLS]", "[MASK]", "[unused0]", "[unused1]", "[unused2]", "[unused3]",
-                 "[unused4]", "[unused5]", "[unused6]")):
+                         "[UNK]", "[SEP]", "[SEC]", "[PAD]", "[CLS]", "[MASK]", "[unused0]", "[unused1]", "[unused2]",
+                         "[unused3]",
+                         "[unused4]", "[unused5]", "[unused6]")):
 
         if not os.path.isfile(vocab_file):
             raise ValueError(
@@ -92,9 +93,12 @@ class BertTokenizer(object):
         self.wordpiece_tokenizer = WordpieceTokenizer(vocab=self.vocab)
         self.max_len = max_len if max_len is not None else int(1e12)
 
+    def add_special_token(self, token):
+        self.vocab[token] = len(self.vocab) + 1
+
     def tokenize(self, text, use_bert_basic_tokenizer=False):
         split_tokens = []
-        if (use_bert_basic_tokenizer):
+        if use_bert_basic_tokenizer:
             pretokens = self.basic_tokenizer.tokenize(text)
         else:
             pretokens = list(enumerate(text.split()))
@@ -171,7 +175,7 @@ class BasicTokenizer(object):
 
     def __init__(self,
                  do_lower_case=True,
-                 never_split=("[UNK]", "[SEP]", "[PAD]", "[CLS]", "[MASK]")):
+                 never_split=("[UNK]", "SEC", "[SEP]", "[PAD]", "[CLS]", "[MASK]")):
         """Constructs a BasicTokenizer.
 
         Args:
