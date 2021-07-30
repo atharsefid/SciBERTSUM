@@ -334,8 +334,8 @@ class LongformerSelfAttention(nn.Module):
     @staticmethod
     def _chunk(hidden_states, sections):
         """convert into overlapping chunks. Chunk size = 2w, overlap size = w"""
-        sections_count = sections[-1]
-        hidden_sections =
+        #sections_count = sections[-1]
+        # hidden_sections =
         # non-overlapping chunks of size = 2w
         hidden_states = hidden_states.view(
             hidden_states.size(0),

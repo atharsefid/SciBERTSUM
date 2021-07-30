@@ -27,6 +27,8 @@ class Batch(object):
             pre_segs = [x[4] for x in data]
             pre_clss = [x[5] for x in data]
             pre_src_sent_labels = [x[6] for x in data]
+            pre_section_ids = [x[7] for x in data]
+            # todo
 
             src = torch.tensor(self._pad(pre_src, 0)).to(int)
             tgt = torch.tensor(self._pad(pre_tgt, 0)).to(int)
@@ -36,6 +38,7 @@ class Batch(object):
             mask_tgt = ~ (tgt == 0)
 
             clss = torch.tensor(self._pad(pre_clss, -1)).to(int)
+            section_ids = torch.tensor(self._pad(pre_section_ids, -1)).to(int)
             src_sent_labels = torch.tensor(self._pad(pre_src_sent_labels, 0)).to(int)
             sections = torch.tensor(self._pad(pre_sections, 0)).to(int)
             mask_cls = ~ (clss == -1)
@@ -44,7 +47,7 @@ class Batch(object):
             setattr(self, 'mask_cls', mask_cls.to(device))
             setattr(self, 'src_sent_labels', src_sent_labels.to(device))
             setattr(self, 'sections', sections.to(device))
-
+            setattr(self, 'section_ids', section_ids.to(device))
             setattr(self, 'src', src.to(device))
             setattr(self, 'tgt', tgt.to(device))
             setattr(self, 'segs', segs.to(device))
@@ -180,6 +183,8 @@ class DataIterator(object):
         tgt_txt = ex['tgt_txt']
         sections = ex['sections']
         token_sections = ex['token_sections']
+        section_ids = ex['section_ids']
+        # todo check if section is working properly
         end_id = [src[-1]]
         lastIsCls = False
         if len(src) > self.args.max_pos-1 and src[self.args.max_pos-1] == 101:
@@ -190,6 +195,8 @@ class DataIterator(object):
         max_sent_id = bisect.bisect_left(clss, self.args.max_pos)
         src_sent_labels = src_sent_labels[:max_sent_id]
         clss = clss[:max_sent_id]
+        max_sec_id = bisect.bisect_left(section_ids, self.args.max_pos)
+        section_ids = section_ids[:max_sec_id]
         sections = sections[:max_sent_id]
         if lastIsCls:
             src_sent_labels = src_sent_labels[:max_sent_id-1]
@@ -198,9 +205,9 @@ class DataIterator(object):
         # src_txt = src_txt[:max_sent_id]
 
         if is_test:
-            return src, sections, token_sections, tgt, segs, clss, src_sent_labels, src_txt, tgt_txt,
+            return src, sections, token_sections, tgt, segs, clss, src_sent_labels, section_ids, src_txt, tgt_txt,
         else:
-            return src, sections, token_sections, tgt, segs, clss, src_sent_labels
+            return src, sections, token_sections, tgt, segs, clss, src_sent_labels, section_ids
 
     def batch_buffer(self, data, batch_size):
         minibatch, size_so_far = [], 0

@@ -96,9 +96,11 @@ class ExtSummarizer(nn.Module):
         self.sigmoid = nn.Sigmoid()
         self.to(device_id)
 
-    def forward(self, src, sections, token_sections, segs, clss, mask_src, mask_cls):
 
-        sents_vec = self.chunked_sent_vectors(src[0], clss[0], token_sections[0], segs[0], mask_src[0])
+
+    def forward(self, src, sections, token_sections, segs, clss, mask_src, mask_cls, section_ids):
+
+        sents_vec = self.section_vectors(src[0], clss[0], token_sections[0], segs[0], mask_src[0], section_ids[0])
 
         sents_vec = sents_vec * mask_cls[:, :, None].float()
         # ###################################################################################
@@ -159,6 +161,21 @@ class ExtSummarizer(nn.Module):
                           .to(self.device).to(int)), 0)
         return data
 
+    def section_vectors(self, src, clss, token_sections, segs, mask_src, section_ids):
+        section_count = section_ids.shape[0]
+        all_section_sents = []
+        for i, section_id in enumerate(section_ids):
+            start = section_id
+            end = section_ids[i+1] if i+1 < section_count else src.shape[-1]
+            # todo complete it later
+            sec_clss = clss[torch.logical_and(start < clss, clss<end)]-start-1
+            sec_src = src[start+1: end]
+            assert sec_src[0] == 101, f" The chunk does not start with 101"
+            assert sec_src[-1] == 102, f" The chunk doesn't end with 102"
+            sec_sents = self.chunked_sent_vectors(src[start+1:end], sec_clss, token_sections[start+1:end], segs[start+1:end], mask_src[start+1:end])
+            all_section_sents.append(sec_sents)
+        return torch.cat(all_section_sents, 0)
+
     def chunked_sent_vectors(self, src, clss, token_sections, segs, mask_src):
         """
         This function divides the document into chunks of size= self.chunk_size and generates the sentence vectors
@@ -168,8 +185,8 @@ class ExtSummarizer(nn.Module):
         def _chunked_sent_vectors(start_index, end_index, start_sent_id, end_sent_id):
             assert end_index - start_index < self.chunk_size, f" The current chunk has size {end_index - start_index} which is bigger than the size {self.chunk_size}| start: {start_index}, end: {end_index}"
             cur_src = src[start_index:end_index]
-            assert cur_src[0].item() == 101, f" The chunk does not start with 101"
-            assert cur_src[-1].item() == 102, f" The chunk doesn't end with 102"
+            assert cur_src[0] == 101, f" The chunk does not start with 101"
+            assert cur_src[-1] == 102, f" The chunk doesn't end with 102"
             cur_src = self._pad_to(cur_src)
             cur_segs = self._pad_to(segs[start_index: end_index])
             cur_token_sections = self._pad_to(token_sections[start_index: end_index])

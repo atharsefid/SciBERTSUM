@@ -314,8 +314,9 @@ class Trainer(object):
             mask_cls = batch.mask_cls
             sections = batch.sections
             token_sections = batch.token_sections
+            section_ids = batch.section_ids
             batch_size, sent_count = mask_cls.shape
-            sent_scores, mask = self.model(src, sections, token_sections, segs, clss, mask, mask_cls)
+            sent_scores, mask = self.model(src, sections, token_sections, segs, clss, mask, mask_cls, section_ids)
 
             sent_scores = sent_scores[:, :sent_count]  # remove padded items from returned scores
 
