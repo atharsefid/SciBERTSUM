@@ -160,15 +160,11 @@ class ExtSummarizer(nn.Module):
     def section_vectors(self, src, clss, token_sections, segs, mask_src, section_ids):
         section_count = section_ids.shape[0]
         all_section_sents = []
-        print(src, src.shape,'((((((((((((((((((((((((((((((((((((((((((((((((((((())))))))))))))))))))))))))))))))')
         for i, section_id in enumerate(section_ids):
             start = section_id
             end = section_ids[i+1] if i+1 < section_count else src.shape[-1]
-            print(start, end)
             sec_clss = clss[torch.logical_and(start < clss, clss<end)]-start-1
             sec_src = src[start+1: end]
-            print('-----src_sec:', sec_src)
-            print('----&&&&&  sec clss', sec_clss)
             assert sec_src[0] == 101, f" The chunk does not start with 101"
             assert sec_src[-1] == 102, f" The chunk doesn't end with 102"
             sec_sents = self.chunked_sent_vectors(src[start+1:end], sec_clss, token_sections[start+1:end], segs[start+1:end], mask_src[start+1:end])
