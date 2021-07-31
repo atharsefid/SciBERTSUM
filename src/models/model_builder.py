@@ -96,8 +96,6 @@ class ExtSummarizer(nn.Module):
         self.sigmoid = nn.Sigmoid()
         self.to(device_id)
 
-
-
     def forward(self, src, sections, token_sections, segs, clss, mask_src, mask_cls, section_ids):
 
         sents_vec = self.section_vectors(src[0], clss[0], token_sections[0], segs[0], mask_src[0], section_ids[0])

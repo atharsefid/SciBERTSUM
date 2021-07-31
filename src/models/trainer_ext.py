@@ -322,6 +322,7 @@ class Trainer(object):
 
             loss = self.loss(sent_scores, labels.float())
             loss = (loss * mask_cls.float()).sum()
+            print('losss----- ', loss)
             (loss / loss.numel()).backward()
             # loss.div(float(normalization)).backward()
 

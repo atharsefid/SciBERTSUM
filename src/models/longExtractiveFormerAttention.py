@@ -537,10 +537,11 @@ class LongformerSelfAttention(nn.Module):
         # get value vectors for global only
         value_vectors_only_global = value_vectors.new_zeros(
             batch_size, max_num_global_attn_indices, self.num_heads, self.head_dim
-        )
-        value_vectors_only_global.requires_grad = False
-        value_vectors.requires_grad = False
+        ).detach()
+        value_vectors = value_vectors.detach()
+
         value_vectors_only_global[is_local_index_global_attn_nonzero] = value_vectors[is_index_global_attn_nonzero]
+
 
         # use `matmul` because `einsum` crashes sometimes with fp16
         # attn = torch.einsum('blhs,bshd->blhd', (selected_attn_probs, selected_v))

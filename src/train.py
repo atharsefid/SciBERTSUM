@@ -50,7 +50,7 @@ if __name__ == '__main__':
     parser.add_argument("-enc_layers", default=6, type=int)
 
     # global attention params
-    parser.add_argument('-global_attention', default=1, type=int, choices=[0,1,2], help=" global attention types:0,1,2. 0: no global attention, 1: global attention at random indices, 2: global attention at the beginning and end of the sections  ")
+    parser.add_argument('-global_attention', default=2, type=int, choices=[0,1,2], help=" global attention types:0,1,2. 0: no global attention, 1: global attention at random indices, 2: global attention at the beginning and end of the sections  ")
     parser.add_argument('-global_attention_ratio', default=0.2, type=float, help="ratio of global attention indices chosen at random")
 
     # params for EXT
