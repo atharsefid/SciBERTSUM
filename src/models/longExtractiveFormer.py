@@ -117,7 +117,7 @@ class LongTransformerEncoderLayer(nn.Module):
 
 class LongExtTransformerEncoder(nn.Module):
 
-    def __init__(self, config):  # d_model, d_ff, heads, dropout, num_inter_layers=0):
+    def __init__(self, config):
         super(LongExtTransformerEncoder, self).__init__()
         self.config = config
         self.pos_emb = PositionalEncoding(self.config)
