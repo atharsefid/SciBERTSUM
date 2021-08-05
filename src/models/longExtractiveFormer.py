@@ -84,7 +84,7 @@ class PositionwiseFeedForward(nn.Module):
 
 
 class LongTransformerEncoderLayer(nn.Module):
-    def __init__(self, config):  # d_model, heads, d_ff, dropout):
+    def __init__(self, config):
         super(LongTransformerEncoderLayer, self).__init__()
         self.config = config
         self.self_attn = LongFormerAttention(self.config) #heads, d_model, dropout=dropout)

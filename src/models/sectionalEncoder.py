@@ -57,18 +57,33 @@ class SectionalExtTransformerEncoder(nn.Module):
     def forward(self, sections_sent_vecs, sections, mask):
         """ See :obj:`EncoderBase.forward()`"""
         # get each section and apply attention inside each sections
-
-
-        batch_size, n_sents = top_vecs.size(0), top_vecs.size(1)
+        sec_start_index = 0
+        section_attentions = []
+        ########################## sectional attentions ###############
+        for sec_vecs in sections_sent_vecs:
+            n_sents, hidden_size = sec_vecs.shape
+            pos_emb = self.pos_emb.pe[:, :n_sents]
+            x = sec_vecs + pos_emb
+            # print('sections_sent_vecs ::::, pos embed shape', sec_vecs.shape, pos_emb.shape, x.shape, mask[:,sec_start_index:sec_start_index+n_sents].shape)
+            for i in range(self.config.num_hidden_layers):
+                x = self.transformer_inter[i](i, x, x, ~ mask[:,sec_start_index:sec_start_index+n_sents])  # all_sents * max_tokens * dim
+            sec_start_index += n_sents
+            section_attentions.append(x)
+        ############################# full attentions #################
+        all_sent_vecs = torch.cat(sections_sent_vecs, 0)
+        n_sents, hidden_size = all_sent_vecs.shape
         pos_emb = self.pos_emb.pe[:, :n_sents]
-        x = top_vecs * mask[:, :, None].float()
-        x = x + pos_emb
-
+        doc_attentions = all_sent_vecs + pos_emb
         for i in range(self.config.num_hidden_layers):
-            x = self.transformer_inter[i](i, x, x, ~ mask)  # all_sents * max_tokens * dim
+            doc_attentions = self.transformer_inter[i]\
+                (i, doc_attentions, doc_attentions, ~ mask)  # all_sents * max_tokens * dim
+        ##############################################################
 
-        x = self.layer_norm(x)
-        sent_scores = self.sigmoid(self.wo(x))
+        sectional_attentions = torch.cat(section_attentions, dim=1)
+        attentions = sectional_attentions +  doc_attentions
+        # print('final attentions', attentions.shape)
+        attentions = self.layer_norm(attentions)
+        sent_scores = self.sigmoid(self.wo(attentions))
         sent_scores = sent_scores.squeeze(-1) * mask.float()
 
         return sent_scores

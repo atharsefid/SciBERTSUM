@@ -108,6 +108,7 @@ class ExtSummarizer(nn.Module):
         # ############################################ sectional attention #######################################
 
         if self.global_attention==2:
+            extended_attention_mask = None
             sent_scores = self.ext_layer(section_sents_vec, sections, mask_cls).squeeze(-1)
 
         # ############################################ Long former attention #######################################
@@ -151,11 +152,10 @@ class ExtSummarizer(nn.Module):
 
         elif self.args.global_attention == 2:
             attentions = []
-            sections_count = sections[-1].item()
-            for index in range(1, sections_count+1):
-                attentions.append((sections == index).nonzero(as_tuple=True)[0][0])
-            if self.args.attend_ending_sent_in_section:
-                flag =1 # todo set attention of sentences at the end of each section to be 1
+            # for index in torch.unique(sections, sorted=True, return_inverse=True)[0]:
+            #     attentions.append((sections == index).nonzero(as_tuple=True)[0][0]).to(int)
+            # if self.args.attend_ending_sent_in_section:
+            #     flag =1 # todo set attention of sentences at the end of each section to be 1
 
         attentions_tensor = np.zeros(sections.shape)
         attentions_tensor[attentions]=1

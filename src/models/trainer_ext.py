@@ -176,9 +176,10 @@ class Trainer(object):
                 mask = batch.mask_src
                 mask_cls = batch.mask_cls
                 sections = batch.sections
+                section_ids = batch.section_ids
                 token_sections = batch.token_sections
                 batch_size, sent_count = mask_cls.shape
-                sent_scores, mask = self.model(src, sections, token_sections, segs, clss, mask, mask_cls)
+                sent_scores, mask = self.model(src, sections, token_sections, segs, clss, mask, mask_cls, section_ids)
                 sent_scores = sent_scores[:, :sent_count]
                 loss = self.loss(sent_scores, labels.float())
                 loss = (loss * mask_cls.float()).sum()
@@ -228,6 +229,7 @@ class Trainer(object):
                         mask = batch.mask_src
                         mask_cls = batch.mask_cls
                         sections = batch.sections
+                        section_ids = batch.section_ids
                         token_sections = batch.token_sections
 
                         gold = []
@@ -240,7 +242,7 @@ class Trainer(object):
                                             range(batch.batch_size)]
                         else:
                             batch_size, sent_count = mask_cls.shape
-                            sent_scores, mask = self.model(src, sections, token_sections, segs, clss, mask, mask_cls)
+                            sent_scores, mask = self.model(src, sections, token_sections, segs, clss, mask, mask_cls, section_ids)
                             sent_scores = sent_scores[:, :sent_count]  # remove padded items from returned scores
                             loss = self.loss(sent_scores, labels.float())
                             loss = (loss * mask_cls.float()).sum()
@@ -248,6 +250,7 @@ class Trainer(object):
                             stats.update(batch_stats)
 
                             sent_scores = sent_scores.cpu().data.numpy()
+                            print('sent_scores::::', sent_scores)
                             selected_ids = np.argsort(-sent_scores, 1)
                         # selected_ids = np.sort(selected_ids,1)
                         # i is the document number in the batch
@@ -322,7 +325,7 @@ class Trainer(object):
 
             loss = self.loss(sent_scores, labels.float())
             loss = (loss * mask_cls.float()).sum()
-            print('losss----- ', loss)
+            # print('losss----- ', loss)
             (loss / loss.numel()).backward()
             # loss.div(float(normalization)).backward()
 
