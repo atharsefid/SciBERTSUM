@@ -1,9 +1,7 @@
 import os
-
 import numpy as np
 import torch
 from tensorboardX import SummaryWriter
-
 import distributed
 from models.reporter_ext import ReportMgr, Statistics
 from others.log import logger
@@ -82,8 +80,9 @@ class Trainer(object):
         self.n_gpu = n_gpu
         self.gpu_rank = gpu_rank
         self.report_manager = report_manager
-
-        self.loss = torch.nn.BCELoss(reduction='none')
+        pos_weight = torch.Tensor([4]).to(device=self.gpu_rank)  # The weight is 4 since the number of negative sentences are 4 times positive sentences.
+        self.loss = torch.nn.BCEWithLogitsLoss(pos_weight=pos_weight)
+        # self.loss = torch.nn.BCELoss(reduction='none')
         assert grad_accum_count > 0
         # Set model in training mode.
         if model:
@@ -180,7 +179,7 @@ class Trainer(object):
                 batch_size, sent_count = mask_cls.shape
                 sent_scores, mask = self.model(src, sections, token_sections, segs, clss, mask, mask_cls)
                 sent_scores = sent_scores[:, :sent_count]
-                loss = self.loss(sent_scores, labels.float())
+                loss = self.loss(sent_scores[0], labels.float()[0])
                 loss = (loss * mask_cls.float()).sum()
                 batch_stats = Statistics(float(loss.cpu().data.numpy()), len(labels))
                 stats.update(batch_stats)
@@ -229,7 +228,7 @@ class Trainer(object):
                         mask_cls = batch.mask_cls
                         sections = batch.sections
                         token_sections = batch.token_sections
-
+                        src_text =  ' '.join(batch.src_str[0])
                         gold = []
                         pred = []
 
@@ -242,12 +241,15 @@ class Trainer(object):
                             batch_size, sent_count = mask_cls.shape
                             sent_scores, mask = self.model(src, sections, token_sections, segs, clss, mask, mask_cls)
                             sent_scores = sent_scores[:, :sent_count]  # remove padded items from returned scores
-                            loss = self.loss(sent_scores, labels.float())
+
+                            loss = self.loss(sent_scores[0], labels.float()[0])
                             loss = (loss * mask_cls.float()).sum()
                             batch_stats = Statistics(float(loss.cpu().data.numpy()), len(labels))
                             stats.update(batch_stats)
 
                             sent_scores = sent_scores.cpu().data.numpy()
+                            if (sent_scores != np.array([[0.5] * sent_scores.shape[1]])).any():
+                                print('sent_scores::::', sent_scores)
                             selected_ids = np.argsort(-sent_scores, 1)
                         # selected_ids = np.sort(selected_ids,1)
                         # i is the document number in the batch
@@ -258,13 +260,17 @@ class Trainer(object):
                             # give candidates that don't have tri-gram overlap
                             # batch.src_str[i] is the list of sents in doc i
                             # batch.src_str[i][j] is the jth sentence in i document of the batch
+                            sents_count = len(batch.src_str[i])
+                            max_size = int(0.2 * len(src_text))
+                            candidate_text = ''
                             for j in selected_ids[i]:  # [:len(batch.src_str[i])]:
-                                sents_count = len(batch.src_str[i])
-                                max_sents = int(0.2 * sents_count)
+
+
                                 if j >= len(
                                         batch.src_str[i]):  # checks if id of the selected sent is less than size of doc
                                     continue
                                 candidate = batch.src_str[i][j].strip()
+                                candidate_text = candidate_text + candidate
                                 # FIXXXXX
                                 # if self.args.block_trigram:
                                 #     if not _block_tri(candidate, _pred):
@@ -272,9 +278,9 @@ class Trainer(object):
                                 # else:
                                 _pred.append(candidate)
 
-                                if (not cal_oracle) and (not self.args.recall_eval) and len(_pred) >= max_sents:
+                                if (not cal_oracle) and (not self.args.recall_eval) and len(candidate_text) >= max_size:
                                    break
-                            print('number of sentences: {}, # of selected sents: {}, # of sentences selected after 3 gram blocking: {}'.format(len(batch.src_str[i]), len(selected_ids[i]), len(_pred)))
+                            print('number of sentences: {}, # of selected sents: {}'.format(len(batch.src_str[i]), len(_pred)))
                             _pred = ' '.join(_pred)
                             # if self.args.recall_eval:
                             #     print('This part limits the size of the predicted summary to the size of the gold summary')
@@ -317,7 +323,7 @@ class Trainer(object):
             batch_size, sent_count = mask_cls.shape
             sent_scores, mask = self.model(src, sections, token_sections, segs, clss, mask, mask_cls)
             sent_scores = sent_scores[:, :sent_count]  # remove padded items from returned scores
-            loss = self.loss(sent_scores, labels.float())
+            loss = self.loss(sent_scores[0], labels.float()[0])
             loss = (loss * mask_cls.float()).sum()
             (loss / loss.numel()).backward()
             # loss.div(float(normalization)).backward()

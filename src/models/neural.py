@@ -64,6 +64,7 @@ class MultiHeadedAttention(nn.Module):
     multiple attention distributions simultaneously
     to select relevant items.
 
+
     .. mermaid::
 
        graph BT

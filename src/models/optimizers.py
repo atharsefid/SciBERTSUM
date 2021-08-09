@@ -4,10 +4,6 @@ import torch.optim as optim
 from torch.nn.utils import clip_grad_norm_
 
 
-# from onmt.utils import use_gpu
-# from models.adam import Adam
-
-
 def use_gpu(opt):
     """
     Creates a boolean if gpu used

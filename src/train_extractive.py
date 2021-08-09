@@ -315,3 +315,4 @@ def test_single_ext(args, device_id, pt, step):
                                        shuffle=False, is_test=True)
     trainer = build_trainer(args, device_id, model, None)
     trainer.test(test_iter, step)
+

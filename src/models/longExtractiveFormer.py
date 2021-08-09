@@ -12,7 +12,6 @@ from pytorch_transformers import BertModel, BertConfig
 from typing import Union, List
 from models.neural import gelu
 
-
 class LongFormerConfig(BertConfig):
 
     def __init__(self, attention_window: Union[List[int], int] = 10, sep_token_id: int = 2, section_size=100, is_decoder=False, **kwargs):
@@ -23,6 +22,7 @@ class LongFormerConfig(BertConfig):
         if type(attention_window) is int:
             attention_window = [attention_window] * self.num_attention_heads
         self.attention_window = attention_window
+        print('attention window size:', attention_window)
         self.pad_token_id = 1
         self.bos_token_id = 0
         self.eos_token_id = 2

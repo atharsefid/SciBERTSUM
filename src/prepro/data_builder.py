@@ -18,6 +18,7 @@ from prepro.utils import _get_word_ngrams
 from glob import glob
 from bs4 import BeautifulSoup
 
+
 nyt_remove_words = ["photo", "graph", "chart", "map", "table", "drawing"]
 
 

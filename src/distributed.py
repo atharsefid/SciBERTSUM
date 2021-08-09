@@ -13,6 +13,7 @@ import torch.distributed
 from others.log import logger
 
 
+
 def is_master(gpu_ranks, device_id):
     return gpu_ranks[device_id] == 0
 

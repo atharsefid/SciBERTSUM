@@ -1,10 +1,8 @@
 """ Report manager utility """
 from __future__ import print_function
-
 import sys
 import time
 from datetime import datetime
-
 from others.log import logger
 
 

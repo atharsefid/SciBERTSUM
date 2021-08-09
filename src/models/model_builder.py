@@ -69,7 +69,8 @@ class ExtSummarizer(nn.Module):
         self.bert = Bert(args.large, args.temp_dir, args.finetune_bert)
         self.doc_len = args.max_pos
         self.chunk_size = args.chunk_size
-        self.config = LongFormerConfig(hidden_size=self.bert.model.config.hidden_size,
+        self.config = LongFormerConfig(attention_window=args.attention_window,
+                                       hidden_size=self.bert.model.config.hidden_size,
                                        intermediate_size=args.ext_ff_size,
                                        num_hidden_layers=args.ext_layers,
                                        num_attention_heads=args.ext_heads,

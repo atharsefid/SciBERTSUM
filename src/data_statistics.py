@@ -2,6 +2,7 @@ from bs4 import BeautifulSoup as bs
 from multiprocess import Pool
 
 
+
 def _count_pages(xml_file):
     with open(xml_file, "r") as file:
         content = "".join(file.readlines())
