@@ -1,12 +1,10 @@
 # LongScientificFormer
 
-For encoding a text longer than 512 tokens, for example 800. Set max_pos to 800 during both preprocessing and training.
-
 Some codes are borrowed from ONMT(https://github.com/OpenNMT/OpenNMT-py)
 
 
 ## Data Preparation 
-### Option 1: download the processed data
+### Step 1: download the processed data
 
 [Pre-processed data](https://drive.google.com/file/d/1xYHXYoQBa7DJVrq0ePly58ioq2EmmVG8/view)
 

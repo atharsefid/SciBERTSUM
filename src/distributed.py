@@ -111,12 +111,12 @@ def all_gather_list(data, max_size=4096):
         raise ValueError(
             'encoded data exceeds max_size: {}'.format(enc_size + 2))
     assert max_size < 255 * 256
-    in_buffer[0] = enc_size // 255  # this encoding works for max_size < 65k # devisor
+    in_buffer[0] = enc_size // 255  # this encoding works for max_size < 65k # divisor
     in_buffer[1] = enc_size % 255  # reminder
     in_buffer[2:enc_size + 2] = torch.ByteTensor(list(enc))
 
-    torch.distributed.all_gather(out_buffers, in_buffer.cuda())
-
+    torch.distributed.all_gather(out_buffers, in_buffer.cuda()) #  all_gather sends in_buffer of each gpu to all other gpus
+    # at the end each gpu will have a list of data from all other GPUs
     results = []
     for i in range(world_size):
         out_buffer = out_buffers[i]

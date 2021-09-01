@@ -80,7 +80,8 @@ class Trainer(object):
         self.n_gpu = n_gpu
         self.gpu_rank = gpu_rank
         self.report_manager = report_manager
-        pos_weight = torch.Tensor([4]).to(device=self.gpu_rank)  # The weight is 4 since the number of negative sentences are 4 times positive sentences.
+        # fix
+        pos_weight = torch.Tensor([50]).to(device=self.gpu_rank)  # The weight is 4 since the number of negative sentences are 4 times positive sentences.
         self.loss = torch.nn.BCEWithLogitsLoss(pos_weight=pos_weight)
         # self.loss = torch.nn.BCELoss(reduction='none')
         assert grad_accum_count > 0
@@ -118,7 +119,6 @@ class Trainer(object):
         self._start_report_manager(start_time=total_stats.start_time)
 
         while step <= train_steps:
-
             reduce_counter = 0
             for i, batch in enumerate(train_iter):
                 if self.n_gpu == 0 or (i % self.n_gpu == self.gpu_rank):
@@ -138,7 +138,7 @@ class Trainer(object):
                             true_batchs, normalization, total_stats,
                             report_stats)
 
-                        report_stats = self._maybe_report_training(
+                        report_stats = self._maybe_report_training( # reports stats and then re initializes the report_stats
                             step, train_steps,
                             self.optim.learning_rate,
                             report_stats)
@@ -250,6 +250,8 @@ class Trainer(object):
                             sent_scores = sent_scores.cpu().data.numpy()
                             if (sent_scores != np.array([[0.5] * sent_scores.shape[1]])).any():
                                 print('sent_scores::::', sent_scores)
+                            else:
+                                print(' ((( all scores equal to 0.5 )))')
                             selected_ids = np.argsort(-sent_scores, 1)
                         # selected_ids = np.sort(selected_ids,1)
                         # i is the document number in the batch
@@ -271,7 +273,7 @@ class Trainer(object):
                                     continue
                                 candidate = batch.src_str[i][j].strip()
                                 candidate_text = candidate_text + candidate
-                                # FIXXXXX
+                                # fix
                                 # if self.args.block_trigram:
                                 #     if not _block_tri(candidate, _pred):
                                 #         _pred.append(candidate)
@@ -341,6 +343,7 @@ class Trainer(object):
                              if p.requires_grad
                              and p.grad is not None]
                     distributed.all_reduce_and_rescale_tensors(grads, float(1))
+                    print('grad norm is ', torch.norm(grads)) # fix
                 self.optim.step()
 
         # in case of multi step gradient accumulation,

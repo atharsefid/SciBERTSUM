@@ -50,9 +50,9 @@ if __name__ == '__main__':
     parser.add_argument("-enc_layers", default=6, type=int)
 
     # global attention params
-    parser.add_argument('-global_attention', default=1, type=int, choices=[0,1,2], help=" global attention types:0,1,2. 0: no global attention, 1: global attention at random indices, 2: global attention at the beginning and end of the sections  ")
+    parser.add_argument('-global_attention', default=0, type=int, choices=[0,1,2], help=" global attention types:0,1,2. 0: no global attention, 1: global attention at random indices, 2: global attention at the beginning and end of the sections  ")
     parser.add_argument('-global_attention_ratio', default=0.2, type=float, help="ratio of global attention indices chosen at random")
-    parser.add_argument('-attention_window', default=10, type=int,help=" size of the local attention window")
+    parser.add_argument('-attention_window', default=20, type=int,help=" size of the local attention window")
     # parser.add_argument('-document_sents_count', default=500, type=int, help=" The number of fixed sentences in a document (padded or truncated)")
 
     # params for EXT
@@ -71,7 +71,7 @@ if __name__ == '__main__':
     parser.add_argument("-param_init", default=0, type=float)
     parser.add_argument("-param_init_glorot", type=str2bool, nargs='?', const=True, default=True)
     parser.add_argument("-optim", default='adam', type=str)
-    parser.add_argument("-lr", default=1, type=float)
+    parser.add_argument("-lr", default=0.001, type=float)
     parser.add_argument("-beta1", default=0.9, type=float)
     parser.add_argument("-beta2", default=0.999, type=float)
     parser.add_argument("-warmup_steps", default=8000, type=int)
@@ -79,7 +79,7 @@ if __name__ == '__main__':
     parser.add_argument("-max_grad_norm", default=0, type=float)
 
     parser.add_argument("-save_checkpoint_steps", default=5, type=int)
-    parser.add_argument("-accum_count", default=1, type=int)
+    parser.add_argument("-accum_count", default=10, type=int) # this is the gradient accumulation count ( like batch size)
     parser.add_argument("-report_every", default=1, type=int)
     parser.add_argument("-train_steps", default=1000, type=int)
     parser.add_argument("-recall_eval", type=str2bool, nargs='?', const=True, default=False)
@@ -87,7 +87,7 @@ if __name__ == '__main__':
     parser.add_argument('-visible_gpus', default='2', type=str)
     parser.add_argument('-gpu_ranks', default='0', type=str)
     parser.add_argument('-log_file', default='../logs/slide_gen.log')
-    parser.add_argument('-seed', default=666, type=int)
+    parser.add_argument('-seed', default=111, type=int)
 
     parser.add_argument("-test_all", type=str2bool, nargs='?', const=True, default=False)
     parser.add_argument("-test_from", default='')

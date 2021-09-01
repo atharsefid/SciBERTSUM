@@ -5,21 +5,21 @@ from others.log import init_logger
 from prepro import data_builder
 
 
-def do_format_to_lines(args):
+def do_format_to_lines(input_args):
     print(time.clock())
-    data_builder.format_to_lines(args)
-    print(time.clock())
-
-
-def do_format_to_bert(args):
-    print(time.clock())
-    data_builder.format_to_bert(args)
+    data_builder.format_to_lines(input_args)
     print(time.clock())
 
 
-def do_tokenize(args):
+def do_format_to_bert(input_args):
     print(time.clock())
-    data_builder.tokenize(args)
+    data_builder.format_to_bert(input_args)
+    print(time.clock())
+
+
+def do_tokenize(input_args):
+    print(time.clock())
+    data_builder.tokenize(input_args)
     print(time.clock())
 
 

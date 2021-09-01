@@ -8,8 +8,8 @@ from others.log import logger
 
 
 class Batch(object):
-
-    def _pad(self, data, pad_id, width=-1):
+    @staticmethod
+    def _pad(data, pad_id, width=-1):
         if width == -1:
             width = max(len(d) for d in data)
         rtn_data = [d + [pad_id] * (width - len(d)) for d in data]
@@ -88,7 +88,6 @@ def load_dataset(args, corpus_type, shuffle):
         for pt in pts:
             yield _lazy_dataset_loader(pt, corpus_type)
     else:
-        # Only one inputters.*Dataset, simple!
         pt = args.bert_data_path + '/' + corpus_type + '.pt'
         yield _lazy_dataset_loader(pt, corpus_type)
 
@@ -180,9 +179,9 @@ class DataIterator(object):
         sections = ex['sections']
         token_sections = ex['token_sections']
         end_id = [src[-1]]
-        lastIsCls = False
+        last_is_cls = False
         if len(src) > self.args.max_pos-1 and src[self.args.max_pos-1] == 101:
-            lastIsCls = True
+            last_is_cls = True
         src = src[:-1][:self.args.max_pos - 1] + end_id
         segs = segs[:self.args.max_pos]
         token_sections = token_sections[:self.args.max_pos]
@@ -190,7 +189,7 @@ class DataIterator(object):
         src_sent_labels = src_sent_labels[:max_sent_id]
         clss = clss[:max_sent_id]
         sections = sections[:max_sent_id]
-        if lastIsCls:
+        if last_is_cls:
             src_sent_labels = src_sent_labels[:max_sent_id-1]
             clss = clss[:max_sent_id-1]
             sections = sections[: max_sent_id-1]

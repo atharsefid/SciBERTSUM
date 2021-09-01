@@ -129,7 +129,7 @@ class LongExtTransformerEncoder(nn.Module):
         self.wo = nn.Linear(self.config.hidden_size, 1, bias=True)
         self.sigmoid = nn.Sigmoid()
         self.section_embedding = nn.Embedding(config.section_size, config.hidden_size)
-
+        self.position_embedding = nn.Embedding(500, config.hidden_size)
     def forward(self, top_vecs, sections, mask, extended_mask):
         """ See :obj:`EncoderBase.forward()`"""
 
@@ -138,6 +138,7 @@ class LongExtTransformerEncoder(nn.Module):
         x = top_vecs * mask[:, :, None].float()
         x = self.pos_emb(x)
 
+        #x = x + self.position_embedding(torch.arange(0, top_vecs.shape[1]).to(top_vecs.device))
         x = x + self.section_embedding(sections)
 
         is_index_masked = extended_mask < 0  # masking tokens (-10000) are true in and local(0) or global(+1000) attentions are False
