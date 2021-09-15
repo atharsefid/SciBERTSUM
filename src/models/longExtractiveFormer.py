@@ -7,8 +7,11 @@ import torch.nn as nn
 import torch.utils.checkpoint
 from torch.nn import CrossEntropyLoss, MSELoss
 from torch.nn import functional as F
+from models.reinforced_utils import  DocumentEncoder, SentenceExtractor
 from models.longExtractiveFormerAttention import LongFormerAttention
+from models.neural import MultiHeadedAttention
 from pytorch_transformers import BertModel, BertConfig
+
 from typing import Union, List
 from models.neural import gelu
 
@@ -86,10 +89,13 @@ class PositionwiseFeedForward(nn.Module):
 
 
 class LongTransformerEncoderLayer(nn.Module):
-    def __init__(self, config):  # d_model, heads, d_ff, dropout):
+    def __init__(self, config):
         super(LongTransformerEncoderLayer, self).__init__()
         self.config = config
-        self.self_attn = LongFormerAttention(self.config) #heads, d_model, dropout=dropout)
+        # longFormerAttention
+        # self.self_attn = LongFormerAttention(self.config) # fix
+        # full attention
+        self.self_attn = MultiHeadedAttention( self.config.num_attention_heads, self.config.hidden_size)
         self.feed_forward = PositionwiseFeedForward(self.config)
         self.layer_norm = nn.LayerNorm(self.config.hidden_size, eps=1e-6)
         self.dropout = nn.Dropout(self.config.hidden_dropout_prob)
@@ -104,57 +110,65 @@ class LongTransformerEncoderLayer(nn.Module):
             input_norm = self.layer_norm(inputs)
         else:
             input_norm = inputs
-        # context = self.self_attn(input_norm, attention_mask=attention_mask)
-        output = self.self_attn(input_norm,
-                                attention_mask,
-                                layer_head_mask,
-                                is_index_masked,
-                                is_index_global_attn,
-                                is_global_attn)
-        context = output[0]
+        attention_mask = attention_mask.unsqueeze(1)
+        # full attention
+        context = self.self_attn(input_norm, input_norm, input_norm, mask=attention_mask)
+        # longFormerAttention
+        # output = self.self_attn(input_norm,
+        #                         attention_mask,
+        #                         layer_head_mask,
+        #                         is_index_masked,
+        #                         is_index_global_attn,
+        #                         is_global_attn)
         out = self.dropout(context) + inputs
         return self.feed_forward(out)
 
 
 class LongExtTransformerEncoder(nn.Module):
 
-    def __init__(self, config):  # d_model, d_ff, heads, dropout, num_inter_layers=0):
+    def __init__(self, config):
         super(LongExtTransformerEncoder, self).__init__()
         self.config = config
         self.pos_emb = PositionalEncoding(self.config)
         self.transformer_inter = nn.ModuleList(
             [LongTransformerEncoderLayer(self.config) for _ in range(self.config.num_hidden_layers)])
-        self.dropout = nn.Dropout(self.config.hidden_dropout_prob)
-        self.layer_norm = nn.LayerNorm(self.config.hidden_size, eps=1e-6)
-        self.wo = nn.Linear(self.config.hidden_size, 1, bias=True)
-        self.sigmoid = nn.Sigmoid()
         self.section_embedding = nn.Embedding(config.section_size, config.hidden_size)
         self.position_embedding = nn.Embedding(500, config.hidden_size)
-    def forward(self, top_vecs, sections, mask, extended_mask):
-        """ See :obj:`EncoderBase.forward()`"""
+        self.length_embedding = nn.Embedding(200, config.hidden_size) # max_src_ntokens_per_sent is 50 fix
+        self.documentEncoder = DocumentEncoder(1, self.config.hidden_size, self.config.hidden_size) # fix 1 is for the batch size
+        self.sentenceExtractor = SentenceExtractor(self.config)
 
-        # batch_size, n_sents = top_vecs.size(0), top_vecs.size(1)
-        # pos_emb = self.pos_emb.pe[:, :n_sents]
-        x = top_vecs * mask[:, :, None].float()
-        x = self.pos_emb(x)
+    def forward(self, sent_vecs, sent_lengths, sections, mask, extended_mask):
 
-        #x = x + self.position_embedding(torch.arange(0, top_vecs.shape[1]).to(top_vecs.device))
-        x = x + self.section_embedding(sections)
-
-        is_index_masked = extended_mask < 0  # masking tokens (-10000) are true in and local(0) or global(+1000) attentions are False
-        is_index_global_attn = extended_mask > 0  # indices with global attention are True others False
-        is_global_attn = is_index_global_attn.flatten().any().item()  # True if at least one index with global attention
-
+        sentence_embeddings = sent_vecs * mask[:, :, None].float()
+        sentence_embeddings = self.pos_emb(sentence_embeddings)
+        # inter sentence attention to identify important sentences relatively
+        context_embeddings = sentence_embeddings
         for i in range(self.config.num_hidden_layers):
-            x = self.transformer_inter[i](i, x,
-                                          attention_mask=extended_mask,
-                                          layer_head_mask=None,
-                                          is_index_masked=is_index_masked,
-                                          is_index_global_attn=is_index_global_attn,
-                                          is_global_attn=is_global_attn)
+            context_embeddings = self.transformer_inter[i](i, context_embeddings,
+                                                           attention_mask=mask,
+                                                           layer_head_mask=None,
+                                                           is_index_masked=None,
+                                                           is_index_global_attn=None,
+                                                           is_global_attn=None)
 
-        x = self.layer_norm(x)
-        sent_scores = self.sigmoid(self.wo(x))
-        sent_scores = sent_scores.squeeze(-1) * mask.float()
+        section_embedding = self.section_embedding(sections)
+        document_embedding = self.documentEncoder(sentence_embeddings)
+        position_embedding = self.position_embedding(torch.arange(0, sections.shape[1]).to(sections.device))
+        # print(sent_lengths)
+        length_embedding = self.length_embedding(sent_lengths)
 
-        return sent_scores
+        sent_scores = self.sentenceExtractor(sentence_embeddings,
+                                             position_embedding,
+                                             section_embedding,
+                                             context_embeddings,
+                                             length_embedding,
+                                             document_embedding)
+
+        return sent_scores.squeeze(-1)
+
+        # is_index_masked = extended_mask < 0  # masking tokens (-10000) are true in and local(0) or global(+1000) attentions are False
+        # is_index_global_attn = extended_mask > 0  # indices with global attention are True others False
+        # is_global_attn = is_index_global_attn.flatten().any().item()  # True if at least one index with global attention
+
+        # sentence_embeddings = self.layer_norm(x)

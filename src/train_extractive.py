@@ -143,7 +143,7 @@ def train_single_ext(args, device_id):
     model = ExtSummarizer(args, device, checkpoint)
     optim = model_builder.build_optim(args, model, checkpoint)
 
-    logger.info(model)
+    # logger.info(model)
 
     trainer = build_trainer(args, device_id, model, optim)
     trainer.train(train_iter_fct, args.train_steps)
@@ -306,6 +306,7 @@ def test_single_ext(args, device_id, pt, step):
         if k in model_flags:
             setattr(args, k, opt[k])
     print(args)
+
 
     model = ExtSummarizer(args, device, checkpoint)
     model.eval()

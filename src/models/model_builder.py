@@ -50,6 +50,9 @@ class Bert(nn.Module):
             self.model = BertModel.from_pretrained('bert-base-uncased', cache_dir=temp_dir)
 
         self.finetune = finetune
+        if not self.finetune:
+            for param in self.parameters():
+                param.requires_grad = False
 
     def forward(self, x, token_sections, segs, mask):
         if self.finetune:
@@ -70,12 +73,12 @@ class ExtSummarizer(nn.Module):
         self.doc_len = args.max_pos
         self.chunk_size = args.chunk_size
         self.config = LongFormerConfig(attention_window=args.attention_window,
-                                       hidden_size=self.bert.model.config.hidden_size,
+                                       hidden_size= self.bert.model.config.hidden_size,
                                        intermediate_size=args.ext_ff_size,
                                        num_hidden_layers=args.ext_layers,
                                        num_attention_heads=args.ext_heads,
                                        hidden_dropout_prob=args.ext_dropout)
-        self.ext_layer = LongExtTransformerEncoder(self.config)
+        self.extraction_model = LongExtTransformerEncoder(self.config)
 
         if self.chunk_size > 512:
             my_pos_embeddings = nn.Embedding(self.doc_len, self.bert.model.config.hidden_size)
@@ -88,13 +91,12 @@ class ExtSummarizer(nn.Module):
             self.load_state_dict(checkpoint['model'], strict=True)
         else:
             if args.param_init != 0.0:
-                for p in self.ext_layer.parameters():
+                for p in self.extraction_model.parameters():
                     p.data.uniform_(-args.param_init, args.param_init)
             if args.param_init_glorot:
-                for p in self.ext_layer.parameters():
+                for p in self.extraction_model.parameters():
                     if p.dim() > 1:
                         xavier_uniform_(p)
-        # self.sigmoid = nn.Sigmoid()
         self.softmax = nn.Softmax(dim=1)
         self.to(device_id)
 
@@ -102,42 +104,51 @@ class ExtSummarizer(nn.Module):
 
         sents_vec = self.chunked_sent_vectors(src[0], clss[0], token_sections[0], segs[0], mask_src[0])
 
-        sents_vec = sents_vec * mask_cls[:, :, None].float()
-        # ###################################################################################
-        # prepare sents_vec for long former
-        inputs_embeds = sents_vec
-        attention_mask = mask_cls
-        input_shape = sents_vec.size()[:-1]
+        # sentence lengths
+        sent_lens = torch.cat([clss[0][1:] - clss[0][:-1], (src.size()[1] - clss[0][-1]).unsqueeze(0)], dim=0).unsqueeze(0)
+        sent_lens = torch.clamp(sent_lens, max=199) # set the max sentence length to be 200. Fix it to 50 layer
+        sent_scores = self.extraction_model(sents_vec, sent_lens, sections, mask_cls, None)
+        return sent_scores
 
-        # todo generate global attention indices fix
-        global_attention_mask = self.build_global_attention_mask(sections[0])
-
-        # merge `global_attention_mask` and `attention_mask`
-        if global_attention_mask is not None:
-            attention_mask = self._merge_to_attention_mask(attention_mask, global_attention_mask)
-
-        position_ids = None
-        padding_len, inputs_embeds, attention_mask, sections, position_ids = \
-            self._pad_to_window_size(
-                inputs_embeds=inputs_embeds,
-                attention_mask=attention_mask,
-                sections=sections,
-                position_ids=position_ids,
-                pad_token_id=self.config.pad_token_id)
-        assert (
-                inputs_embeds.shape[1] % self.config.attention_window[0] == 0
-        ), f"padded inputs_embeds of size {inputs_embeds.shape[1]} is not a multiple of window size " \
-           f"{self.config.attention_window}"
-        # print('---inputs_embed ', inputs_embeds.shape)
-        # We can provide a self-attention mask of dimensions [batch_size, from_seq_length, to_seq_length]
-        # ourselves in which case we just need to make it broadcastable to all heads.
-        # converts 0 1 2 mask labels to -10000 , 0 , 10000 .
-        extended_attention_mask: torch.Tensor = self.get_extended_attention_mask(attention_mask, input_shape, device)[:,
-                                                0, 0, :]
-
-        sent_scores = self.ext_layer(inputs_embeds, sections, attention_mask, extended_attention_mask).squeeze(-1)
-        sent_scores = self.softmax(sent_scores)
-        return sent_scores, extended_attention_mask
+    # sents_vec = self.chunked_sent_vectors(src[0], clss[0], token_sections[0], segs[0], mask_src[0])
+    #
+    # sents_vec = sents_vec * mask_cls[:, :, None].float()
+    # # ###################################################################################
+    # # prepare sents_vec for long former
+    # inputs_embeds = sents_vec
+    # attention_mask = mask_cls
+    # input_shape = sents_vec.size()[:-1]
+    #
+    # # # todo generate global attention indices fix Fix
+    # # global_attention_mask = self.build_global_attention_mask(sections[0])
+    # #
+    # # # merge `global_attention_mask` and `attention_mask` fix
+    # # if global_attention_mask is not None:
+    # #     attention_mask = self._merge_to_attention_mask(attention_mask, global_attention_mask)
+    #
+    # position_ids = None
+    # # padded to 500 instead of window size to be fixed
+    # # padding_len, inputs_embeds, attention_mask, sections, position_ids = \
+    # #     self._pad_to_window_size(
+    # #         inputs_embeds=inputs_embeds,
+    # #         attention_mask=attention_mask,
+    # #         sections=sections,
+    # #         position_ids=position_ids,
+    # #         pad_token_id=self.config.pad_token_id)
+    # # assert (
+    # #         inputs_embeds.shape[1] % self.config.attention_window[0] == 0
+    # # ), f"padded inputs_embeds of size {inputs_embeds.shape[1]} is not a multiple of window size " \
+    # #    f"{self.config.attention_window}"
+    #
+    # # We can provide a self-attention mask of dimensions [batch_size, from_seq_length, to_seq_length]
+    # # ourselves in which case we just need to make it broadcastable to all heads.
+    # # converts 0 1 2 mask labels to -10000 , 0 , 10000 .
+    # extended_attention_mask: torch.Tensor = self.get_extended_attention_mask(attention_mask, input_shape, device)[:, 0,
+    #                                         0, :]
+    # sent_scores = self.ext_layer(sents_vec, sections, attention_mask, extended_attention_mask)
+    # # sent_scores = self.softmax(sent_scores)
+    #
+    # return sent_scores, extended_attention_mask
 
     def build_global_attention_mask(self, sections):
         attentions = []
@@ -230,7 +241,9 @@ class ExtSummarizer(nn.Module):
         input_shape = inputs_embeds.shape
         batch_size, seq_len = input_shape[:2]
 
-        padding_len = (attention_window - seq_len % attention_window) % attention_window
+        #padding_len = (attention_window - seq_len % attention_window) % attention_window
+        padding_len =  500 - seq_len
+
         if padding_len > 0:
             # logger.info(
             #     "Input ids are automatically padded from {} to {} to be a multiple of `config.attention_window`: {}".format(
@@ -246,7 +259,7 @@ class ExtSummarizer(nn.Module):
                     self.config.pad_token_id,
                     dtype=torch.long,
                 )
-                inputs_embeds_padding = self.bert.model.embeddings(input_ids_padding)
+                inputs_embeds_padding = self.bert.model.embeddings(input_ids_padding )
                 inputs_embeds = torch.cat([inputs_embeds, inputs_embeds_padding], dim=-2)
 
             attention_mask = F.pad(attention_mask, [0, padding_len], value=False)  # no attention on the padding tokens

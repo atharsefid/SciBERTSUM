@@ -57,9 +57,9 @@ if __name__ == '__main__':
 
     parser.add_argument('-dataset', default='')
 
-    parser.add_argument('-n_cpus', default=2, type=int)
+    parser.add_argument('-n_cpus', default=20, type=int)
 
+    parser.add_argument("-num_sample_rollout", type=int, default=20)
     args = parser.parse_args()
     init_logger(args.log_file)
     eval('data_builder.' + args.mode + '(args)')
-

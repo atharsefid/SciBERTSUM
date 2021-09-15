@@ -17,7 +17,7 @@ from others.utils import clean
 from prepro.utils import _get_word_ngrams
 from glob import glob
 from bs4 import BeautifulSoup
-
+from prepro.reinforce_oracle import build_oracle_rewards
 
 nyt_remove_words = ["photo", "graph", "chart", "map", "table", "drawing"]
 
@@ -193,7 +193,6 @@ def greedy_selection(doc_sent_list, abstract_sent_list, summary_size):
     reference_1grams = _get_word_ngrams(1, [abstract])
     evaluated_2grams = [_get_word_ngrams(2, [sent]) for sent in sents]
     reference_2grams = _get_word_ngrams(2, [abstract])
-
     selected = []
     for s in range(summary_size):
         cur_max_rouge = max_rouge
@@ -216,7 +215,6 @@ def greedy_selection(doc_sent_list, abstract_sent_list, summary_size):
             return selected
         selected.append(cur_id)
         max_rouge = cur_max_rouge
-
     return sorted(selected)
 
 
@@ -243,7 +241,6 @@ class BertData:
         self.pad_vid = self.tokenizer.vocab[self.pad_token]
 
     def preprocess(self, src, sections, tgt, sent_labels, use_bert_basic_tokenizer=False, is_test=False):
-
         if not is_test and len(src) == 0:
             return None
 
@@ -303,7 +300,11 @@ class BertData:
         assert (len(token_sections) == len(segments_ids)), f'token sections and segment ids do not have same length'
         assert (len(_sections) == len(sent_labels) == len(cls_ids)), \
             f'preprocessed dimensions do not match {len(_sections)}, {len(sent_labels)}, {len(cls_ids)}'
-        return src_subtoken_idxs, sent_labels, tgt_subtoken_idxs, segments_ids, cls_ids, src_txt, tgt_txt, _sections, token_sections
+        b_data_dict = {"src": src_subtoken_idxs, "tgt": tgt_subtoken_idxs,
+                       "src_sent_labels": sent_labels, "segs": segments_ids, 'clss': cls_ids,
+                       'src_txt': src_txt, "tgt_txt": tgt_txt, "sections": sections, "token_sections": token_sections,
+                       'src_list':src, 'tgt_list': tgt}
+        return b_data_dict
 
 
 def _get_text_clean_tika(xml_file):
@@ -414,13 +415,13 @@ def format_to_bert(args):
             real_name = json_f.split('/')[-1]
             a_lst.append((corpus_type, json_f, args, pjoin(args.save_path, real_name.replace('json', 'bert.pt'))))
         print('document for corpus type:', corpus_type, a_lst)
-        pool = Pool(args.n_cpus)
-        for d in pool.imap(_format_to_bert, a_lst):
-            pass
-
-        pool.close()
-        pool.join()
-
+        for a in a_lst: # fix
+            _format_to_bert(a)
+        # pool = Pool(args.n_cpus)
+        # for d in pool.imap(_format_to_bert, a_lst):
+        #     pass
+        # pool.close()
+        # pool.join()
 
 def _format_to_bert(params):
     corpus_type, json_file, args, save_file = params
@@ -435,8 +436,9 @@ def _format_to_bert(params):
     jobs = json.load(open(json_file))
     datasets = []
     for ii, d in enumerate(jobs):
+        print('job id', ii)
         source, sections, tgt = d['src'], d['sections'], d['tgt']
-        # greedily selects the top 3 sentences and labels them as 1
+        # greedily selects the top 0.2 sentences and labels them as 1
         summary_size = int(0.2 * len(source))
 
         sent_labels = greedy_selection(source[:args.max_src_nsents], tgt, summary_size)
@@ -444,17 +446,17 @@ def _format_to_bert(params):
         if args.lower:
             source = [' '.join(s).lower().split() for s in source]
             tgt = [' '.join(s).lower().split() for s in tgt]
+
         b_data = bert.preprocess(source, sections, tgt, sent_labels,
                                  use_bert_basic_tokenizer=args.use_bert_basic_tokenizer,
                                  is_test=is_test)
-
+        import numpy
         if b_data is None:
             continue
-        src_subtoken_idxs, sent_labels, tgt_subtoken_idxs, segments_ids, cls_ids, src_txt, tgt_txt, sections, token_sections = b_data
-        b_data_dict = {"src": src_subtoken_idxs, "tgt": tgt_subtoken_idxs,
-                       "src_sent_labels": sent_labels, "segs": segments_ids, 'clss': cls_ids,
-                       'src_txt': src_txt, "tgt_txt": tgt_txt, "sections": sections, "token_sections": token_sections}
-        datasets.append(b_data_dict)
+
+        rougescore_sentids = build_oracle_rewards(args, b_data['src_list'], b_data['tgt_list'], b_data['src_sent_labels'])
+        b_data['reward_oracle'] = rougescore_sentids
+        datasets.append(b_data)
     logger.info('Processed %d instances.' % len(datasets))
     logger.info('Saving to %s' % save_file)
     torch.save(datasets, save_file)

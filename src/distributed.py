@@ -24,7 +24,6 @@ def multi_init(device_id, world_size, gpu_ranks):
     process group. They are always consecutive integers ranging from 0 to
     ``world_size``.
     """
-    print('GPU ranks: ', gpu_ranks)
     dist_init_method = 'tcp://localhost:10000'
     dist_world_size = world_size
     torch.distributed.init_process_group(

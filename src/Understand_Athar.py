@@ -1,4 +1,6 @@
 import json
+
+import numpy
 import numpy as np
 from models.data_loader import *
 import argparse
@@ -8,18 +10,31 @@ import numpy as np
 
 def plot_data_statistics():
     parser = argparse.ArgumentParser()
-    parser.add_argument("-bert_data_path", default='../bert_data')
+    parser.add_argument("-bert_data_path", default='../bert_data_oracle_rewards/')
     args = parser.parse_args()
-    print('start loading data::::')
+
     article_tokens = []
     article_sentences = []
     slide_tokens = []
     morethan5000 = 0
     sent_sizes = []
+    maxlen = -1
     for pt_file in load_dataset(args, 'train', shuffle=True):
         # print('pt_file size:', len(pt_file))
         for ex in pt_file:
             src = ex['src']
+            clss = numpy.array(ex['clss'])
+            labels = ex['src_sent_labels']
+            reward_oracle = ex['reward_oracle']
+            print('-------------------------------------------------------')
+            for reward, oracle in reward_oracle:
+                print(reward, len(oracle), oracle)
+            continue
+            # print(sum(labels),int(0.2* len(clss)), len(clss))
+            # generates the sentence lengths
+            lengths = numpy.append(clss[1:] - clss[:-1] , len(src)- clss[-1])
+            maxlen = max(maxlen, max(lengths))
+
             np_src = np.array(src)
             cls_indices = np.argwhere(np_src==101)
             prev_cls = cls_indices[0][0]
@@ -34,6 +49,7 @@ def plot_data_statistics():
             slide_tokens.append(len(tgt))
             article_tokens.append(len(src))
             article_sentences.append(len(src_sent_labels))
+    print(maxlen)
     sent_size_np = np.array(sent_sizes)
     big_sents = np.argwhere(sent_size_np > 200).size
     print('---- number of sents greater than 100: {}, total sentences: {}, ration:{}'.format(big_sents, sent_size_np.size,

@@ -48,6 +48,10 @@ python preprocess.py -mode clean_paper_jsons -save_path ../json_data/  -n_cpus 1
 python preprocess.py -mode format_to_bert -raw_path ../json_data/ -save_path ../bert_data  -lower -n_cpus 40 -log_file ../logs/build_bert_files.log
 ```
 
+# reinforced pt generation
+```
+python preprocess.py -mode format_to_bert -raw_path ../json_data/ -save_path ../rf_bert_data  -lower -n_cpus 40 -log_file ../logs/rf_build_bert_files.log
+```
 
 ## Model Training
 

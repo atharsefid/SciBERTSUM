@@ -197,7 +197,7 @@ class Statistics(object):
         from distributed import all_gather_list
 
         # Get a list of world_size lists with len(stat_list) Statistics objects
-        all_stats = all_gather_list(stat_list, max_size=max_size)
+        all_stats = all_gather_list(stat_list, max_size=max_size) # all_stats = [[stat],[stat],[stat]]
 
         our_rank = get_rank()
         our_stats = all_stats[our_rank]
@@ -244,10 +244,11 @@ class Statistics(object):
         if num_steps > 0:
             step_fmt = "%s/%5d" % (step_fmt, num_steps)
         logger.info(
-            ("Step %s; xent: %4.2f; " +
+            ("Step %s; xent: %4.2f; docs: %d, " +
              "lr: %7.7f; %3.0f docs/s; %6.0f sec")
             % (step_fmt,
                self.xent(),
+               self.n_docs,
                learning_rate,
                self.n_docs/ (t + 1e-5),
                time.time() - start))

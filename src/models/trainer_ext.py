@@ -1,6 +1,7 @@
 import os
 import numpy as np
 import torch
+import random
 from tensorboardX import SummaryWriter
 import distributed
 from models.reporter_ext import ReportMgr, Statistics
@@ -10,7 +11,8 @@ from others.utils import test_rouge, rouge_results_to_str
 
 def _tally_parameters(model):
     n_params = sum([p.nelement() for p in model.parameters()])
-    return n_params
+    n_params_with_grad = sum([p.nelement() for p in model.parameters() if p.requires_grad])
+    return n_params, n_params_with_grad
 
 
 def build_trainer(args, device_id, model, optim):
@@ -36,8 +38,6 @@ def build_trainer(args, device_id, model, optim):
         gpu_rank = 0
         n_gpu = 0
 
-    print('gpu_rank %d' % gpu_rank)
-
     tensorboard_log_dir = args.tensorboard_log_path
 
     writer = SummaryWriter(tensorboard_log_dir, comment="Unmt")
@@ -47,8 +47,9 @@ def build_trainer(args, device_id, model, optim):
     trainer = Trainer(args, model, optim, grad_accum_count, n_gpu, gpu_rank, report_manager)
 
     if model:
-        n_params = _tally_parameters(model)
-        logger.info('* number of parameters: %d' % n_params)
+        n_params, n_params_with_grad = _tally_parameters(model)
+
+        logger.info('* number of parameters: %d, number of parameters with grad: %d' % (n_params, n_params_with_grad))
 
     return trainer
 
@@ -80,10 +81,9 @@ class Trainer(object):
         self.n_gpu = n_gpu
         self.gpu_rank = gpu_rank
         self.report_manager = report_manager
-        # fix
-        pos_weight = torch.Tensor([50]).to(device=self.gpu_rank)  # The weight is 4 since the number of negative sentences are 4 times positive sentences.
+        pos_weight = torch.Tensor([5]).to(device=self.gpu_rank)  # The weight is 4 since the number of negative sentences are 4 times positive sentences.
         self.loss = torch.nn.BCEWithLogitsLoss(pos_weight=pos_weight)
-        # self.loss = torch.nn.BCELoss(reduction='none')
+        self.no_reduce_loss = torch.nn.BCEWithLogitsLoss(pos_weight=pos_weight, reduce=False)
         assert grad_accum_count > 0
         # Set model in training mode.
         if model:
@@ -111,9 +111,8 @@ class Trainer(object):
         step = self.optim._step + 1
         true_batchs = []
         accum = 0
-        normalization = 0
         train_iter = train_iter_fct()
-
+        epoch = 0
         total_stats = Statistics()
         report_stats = Statistics()
         self._start_report_manager(start_time=total_stats.start_time)
@@ -124,19 +123,13 @@ class Trainer(object):
                 if self.n_gpu == 0 or (i % self.n_gpu == self.gpu_rank):
 
                     true_batchs.append(batch)
-                    normalization += batch.batch_size
                     accum += 1
                     # it keeps accumulating the gradients until reach a limit
                     if accum == self.grad_accum_count:
                         reduce_counter += 1
-                        if self.n_gpu > 1:
-                            normalization = sum(distributed
-                                                .all_gather_list
-                                                (normalization))
 
                         self._gradient_accumulation( # this is the main function that calculates the loss
-                            true_batchs, normalization, total_stats,
-                            report_stats)
+                            true_batchs, total_stats, report_stats)
 
                         report_stats = self._maybe_report_training( # reports stats and then re initializes the report_stats
                             step, train_steps,
@@ -145,7 +138,7 @@ class Trainer(object):
 
                         true_batchs = []
                         accum = 0
-                        normalization = 0
+
                         if step % self.save_checkpoint_steps == 0 and self.gpu_rank == 0:  # save in the master GPU only
                             self._save(step)
 
@@ -153,6 +146,8 @@ class Trainer(object):
                         if step > train_steps:
                             break
             train_iter = train_iter_fct()
+            print('--------------------------finished epoch: %d -----------------------' % epoch)
+            epoch +=1
 
         return total_stats
 
@@ -177,9 +172,9 @@ class Trainer(object):
                 sections = batch.sections
                 token_sections = batch.token_sections
                 batch_size, sent_count = mask_cls.shape
-                sent_scores, mask = self.model(src, sections, token_sections, segs, clss, mask, mask_cls)
-                sent_scores = sent_scores[:, :sent_count]
-                loss = self.loss(sent_scores[0], labels.float()[0])
+                sent_scores = self.model(src, sections, token_sections, segs, clss, mask, mask_cls)
+                sent_scores = sent_scores[:sent_count]
+                loss = self.loss(sent_scores, labels.float()[0])
                 loss = (loss * mask_cls.float()).sum()
                 batch_stats = Statistics(float(loss.cpu().data.numpy()), len(labels))
                 stats.update(batch_stats)
@@ -220,14 +215,6 @@ class Trainer(object):
             with open(gold_path, 'w') as save_gold:
                 with torch.no_grad():
                     for batch in test_iter: # each batch has one document
-                        src = batch.src
-                        labels = batch.src_sent_labels
-                        segs = batch.segs
-                        clss = batch.clss
-                        mask = batch.mask_src
-                        mask_cls = batch.mask_cls
-                        sections = batch.sections
-                        token_sections = batch.token_sections
                         src_text =  ' '.join(batch.src_str[0])
                         gold = []
                         pred = []
@@ -235,25 +222,21 @@ class Trainer(object):
                         if cal_lead:
                             selected_ids = [list(range(batch.clss.size(1)))] * batch.batch_size
                         elif cal_oracle:
-                            selected_ids = [[j for j in range(batch.clss.size(1)) if labels[i][j] == 1] for i in
+                            selected_ids = [[j for j in range(batch.clss.size(1)) if batch.src_sent_labels[i][j] == 1] for i in
                                             range(batch.batch_size)]
                         else:
-                            batch_size, sent_count = mask_cls.shape
-                            sent_scores, mask = self.model(src, sections, token_sections, segs, clss, mask, mask_cls)
-                            sent_scores = sent_scores[:, :sent_count]  # remove padded items from returned scores
-
-                            loss = self.loss(sent_scores[0], labels.float()[0])
-                            loss = (loss * mask_cls.float()).sum()
-                            batch_stats = Statistics(float(loss.cpu().data.numpy()), len(labels))
+                            batch_size, sent_count = batch.mask_cls.shape
+                            sent_scores = self.model(batch.src, batch.sections, batch.token_sections, batch.segs, batch.clss, batch.mask_src, batch.mask_cls)
+                            sent_scores = sent_scores[ :sent_count]  # remove padded items from returned scores
+                            loss = self.loss(sent_scores, batch.src_sent_labels.float()[0])
+                            batch_stats = Statistics(float(loss.cpu().data.numpy()), len(batch.src_sent_labels))
                             stats.update(batch_stats)
 
                             sent_scores = sent_scores.cpu().data.numpy()
-                            if (sent_scores != np.array([[0.5] * sent_scores.shape[1]])).any():
-                                print('sent_scores::::', sent_scores)
-                            else:
+                            if (sent_scores == np.array([0.5] * sent_scores.shape[0])).any():
                                 print(' ((( all scores equal to 0.5 )))')
-                            selected_ids = np.argsort(-sent_scores, 1)
-                        # selected_ids = np.sort(selected_ids,1)
+                            selected_ids = [np.argsort(-sent_scores)]
+                            print('--- selected_ids', selected_ids)
                         # i is the document number in the batch
                         for i, idx in enumerate(selected_ids):
                             _pred = []
@@ -273,8 +256,8 @@ class Trainer(object):
                                     continue
                                 candidate = batch.src_str[i][j].strip()
                                 candidate_text = candidate_text + candidate
-                                # fix
-                                # if self.args.block_trigram:
+
+                                # if self.args.block_trigram: # fix
                                 #     if not _block_tri(candidate, _pred):
                                 #         _pred.append(candidate)
                                 # else:
@@ -302,35 +285,21 @@ class Trainer(object):
         self._report_step(0, step, valid_stats=stats)
         return stats
 
-    def _gradient_accumulation(self, true_batchs, normalization, total_stats,
-                               report_stats):
-        """
-        normalization: number of documents processed until grad_accumulate is reached
-        """
+    def _gradient_accumulation(self, true_batchs, total_stats, report_stats):
         if self.grad_accum_count > 1:
             self.model.zero_grad()
-
         for batch in true_batchs:
             if self.grad_accum_count == 1:
                 self.model.zero_grad()
-            # each batch is a 1024 tokens and the sentences that fit in the this length
-            src = batch.src
-            labels = batch.src_sent_labels
-            segs = batch.segs
-            clss = batch.clss
-            mask = batch.mask_src
-            mask_cls = batch.mask_cls
-            sections = batch.sections
-            token_sections = batch.token_sections
-            batch_size, sent_count = mask_cls.shape
-            sent_scores, mask = self.model(src, sections, token_sections, segs, clss, mask, mask_cls)
-            sent_scores = sent_scores[:, :sent_count]  # remove padded items from returned scores
-            loss = self.loss(sent_scores[0], labels.float()[0])
-            loss = (loss * mask_cls.float()).sum()
-            (loss / loss.numel()).backward()
-            # loss.div(float(normalization)).backward()
+            batch_size, sent_count = batch.mask_cls.shape
+            sent_scores = self.model(batch.src, batch.sections, batch.token_sections, batch.segs, batch.clss, batch.mask_src, batch.mask_cls)
+            sent_scores = sent_scores[ :sent_count]  # remove padded items from window size
+            # loss = self.loss(sent_scores, batch.src_sent_labels.float()[0])
+            loss = self.reinforced_cross_entropy(sent_scores.unsqueeze(0), batch.rf_labels, batch.rf_rewards)
 
-            batch_stats = Statistics(float(loss.cpu().data.numpy()), normalization)
+            loss.backward()
+
+            batch_stats = Statistics(float(loss.cpu().data.numpy()), batch.batch_size)
             # print('----stats info', batch_stats.loss, batch_stats.n_docs)
             total_stats.update(batch_stats)
             report_stats.update(batch_stats)
@@ -343,16 +312,14 @@ class Trainer(object):
                              if p.requires_grad
                              and p.grad is not None]
                     distributed.all_reduce_and_rescale_tensors(grads, float(1))
-                    print('grad norm is ', torch.norm(grads)) # fix
+
                 self.optim.step()
 
         # in case of multi step gradient accumulation,
         # update only after accum batches
         if self.grad_accum_count > 1:
             if self.n_gpu > 1:
-                grads = [p.grad.data for p in self.model.parameters()
-                         if p.requires_grad
-                         and p.grad is not None]
+                grads = [p.grad.data for p in self.model.parameters() if p.requires_grad and p.grad is not None]
                 distributed.all_reduce_and_rescale_tensors(grads, float(1))
             self.optim.step()
 
@@ -430,3 +397,45 @@ class Trainer(object):
         """
         if self.model_saver:
             self.model_saver.maybe_save(step)
+
+    def reinforced_cross_entropy(self, logits, oracle_multiple, reward_multiple):
+        """
+        :param logits: batch_size, max_doc_length
+        :param oracle_multiple: sample_size, max_doc_length
+        :param reward_multiple: sample_size
+        :return: cross_entropy. FloatTensor. shape = batch_size, FLAGS.max_doc_length
+        """
+
+        batch_size, num_sents = logits.shape
+        logits = logits.view(-1)  # batch_size * max_doc_length
+        index = random.sample(range(oracle_multiple.shape[1]),batch_size)
+        # print("reward_multiple:::::::::::::", reward_multiple)
+        oracle = oracle_multiple[:, index]
+        reward = reward_multiple[:, index]
+        oracle = oracle.view(-1)  # batch_size * max_doc_length
+        # print(torch.sum(logits), torch.sum(oracle), oracle.shape)
+        cross_entropy = self.no_reduce_loss(logits, oracle.float())
+        # print('losssssssssssssssssss', logits[:5], oracle[:5], torch.mean(cross_entropy))
+        reinforce = True
+        if reinforce:
+            # reward : (batch_size, num_samples) -> (batch_size, num_samples, num_sents)
+            # batch_size = 4
+            # num_samples = 2
+            # num_sentences = 3
+            # [[0.8, 1.8], [0.7, 1.7], [0.6, 1.6], [0.5, 1.5]]
+            #   --> [[[0.8, 0.8, 0.8], [1.8, 1.8, 1.8]],
+            #         [[0,7, 0.7, 0.7], [1.7, 1.7, 1.7]],
+            #         [[0.6, 0.6, 0.6], [1.6, 1.6, 1.6]],
+            #         [[0.7, 0.7, 0.7], [1.7, 1.7, 1.7]]]
+
+            reward = reward.view(-1)
+            reward = reward.repeat(1, num_sents)
+            reward = reward.view(num_sents, -1)
+            reward = reward.transpose(0, 1).contiguous()
+            reward = reward.view(batch_size, 1, num_sents)
+
+            cross_entropy = cross_entropy.view(batch_size, 1, num_sents)
+            cross_entropy = torch.mul(cross_entropy, reward)
+            cross_entropy = cross_entropy.view(-1)
+
+        return torch.mean(cross_entropy)
