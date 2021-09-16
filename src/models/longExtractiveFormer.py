@@ -25,7 +25,7 @@ class LongFormerConfig(BertConfig):
         if type(attention_window) is int:
             attention_window = [attention_window] * self.num_attention_heads
         self.attention_window = attention_window
-        print('attention window size:', attention_window)
+        # print('attention window size:', attention_window)
         self.pad_token_id = 1
         self.bos_token_id = 0
         self.eos_token_id = 2
@@ -93,9 +93,9 @@ class LongTransformerEncoderLayer(nn.Module):
         super(LongTransformerEncoderLayer, self).__init__()
         self.config = config
         # longFormerAttention
-        # self.self_attn = LongFormerAttention(self.config) # fix
+        self.self_attn = LongFormerAttention(self.config) # fix
         # full attention
-        self.self_attn = MultiHeadedAttention( self.config.num_attention_heads, self.config.hidden_size)
+        # self.self_attn = MultiHeadedAttention( self.config.num_attention_heads, self.config.hidden_size)
         self.feed_forward = PositionwiseFeedForward(self.config)
         self.layer_norm = nn.LayerNorm(self.config.hidden_size, eps=1e-6)
         self.dropout = nn.Dropout(self.config.hidden_dropout_prob)
@@ -110,16 +110,18 @@ class LongTransformerEncoderLayer(nn.Module):
             input_norm = self.layer_norm(inputs)
         else:
             input_norm = inputs
-        attention_mask = attention_mask.unsqueeze(1)
+
         # full attention
-        context = self.self_attn(input_norm, input_norm, input_norm, mask=attention_mask)
+        # attention_mask = attention_mask.unsqueeze(1)
+        # context = self.self_attn(input_norm, input_norm, input_norm, mask=attention_mask)
         # longFormerAttention
-        # output = self.self_attn(input_norm,
-        #                         attention_mask,
-        #                         layer_head_mask,
-        #                         is_index_masked,
-        #                         is_index_global_attn,
-        #                         is_global_attn)
+        out = self.self_attn(input_norm,
+                                attention_mask,
+                                layer_head_mask,
+                                is_index_masked,
+                                is_index_global_attn,
+                                is_global_attn)
+        context = out[0]
         out = self.dropout(context) + inputs
         return self.feed_forward(out)
 
@@ -137,8 +139,15 @@ class LongExtTransformerEncoder(nn.Module):
         self.length_embedding = nn.Embedding(200, config.hidden_size) # max_src_ntokens_per_sent is 50 fix
         self.documentEncoder = DocumentEncoder(1, self.config.hidden_size, self.config.hidden_size) # fix 1 is for the batch size
         self.sentenceExtractor = SentenceExtractor(self.config)
+        self.layer_norm = nn.LayerNorm(self.config.hidden_size, eps=1e-6)
 
     def forward(self, sent_vecs, sent_lengths, sections, mask, extended_mask):
+        is_index_masked = extended_mask < 0  # masking tokens (-10000) are true in and local(0) or global(+1000) attentions are False
+        is_index_global_attn = extended_mask > 0  # indices with global attention are True others False
+        is_global_attn = is_index_global_attn.flatten().any().item()  # True if at least one index with global attention
+
+
+
 
         sentence_embeddings = sent_vecs * mask[:, :, None].float()
         sentence_embeddings = self.pos_emb(sentence_embeddings)
@@ -146,19 +155,23 @@ class LongExtTransformerEncoder(nn.Module):
         context_embeddings = sentence_embeddings
         for i in range(self.config.num_hidden_layers):
             context_embeddings = self.transformer_inter[i](i, context_embeddings,
-                                                           attention_mask=mask,
+                                                           attention_mask=extended_mask,
                                                            layer_head_mask=None,
-                                                           is_index_masked=None,
-                                                           is_index_global_attn=None,
-                                                           is_global_attn=None)
+                                                           is_index_masked=is_index_masked,
+                                                           is_index_global_attn=is_index_global_attn,
+                                                           is_global_attn=is_global_attn)
+        context_embeddings = context_embeddings[:,:torch.sum(mask) ,:]
+        sentence_embeddings = sentence_embeddings[:,:torch.sum(mask) ,:]
+        sections = sections[:,:torch.sum(mask)]
 
+        context_embeddings = self.layer_norm(context_embeddings)
         section_embedding = self.section_embedding(sections)
         document_embedding = self.documentEncoder(sentence_embeddings)
         position_embedding = self.position_embedding(torch.arange(0, sections.shape[1]).to(sections.device))
         # print(sent_lengths)
         length_embedding = self.length_embedding(sent_lengths)
 
-        sent_scores = self.sentenceExtractor(sentence_embeddings,
+        sent_scores = self.sentenceExtractor(context_embeddings, # fix
                                              position_embedding,
                                              section_embedding,
                                              context_embeddings,
@@ -166,9 +179,3 @@ class LongExtTransformerEncoder(nn.Module):
                                              document_embedding)
 
         return sent_scores.squeeze(-1)
-
-        # is_index_masked = extended_mask < 0  # masking tokens (-10000) are true in and local(0) or global(+1000) attentions are False
-        # is_index_global_attn = extended_mask > 0  # indices with global attention are True others False
-        # is_global_attn = is_index_global_attn.flatten().any().item()  # True if at least one index with global attention
-
-        # sentence_embeddings = self.layer_norm(x)

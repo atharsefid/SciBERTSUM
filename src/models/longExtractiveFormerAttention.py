@@ -165,7 +165,6 @@ class LongformerSelfAttention(nn.Module):
 
         # values to pad for attention probs        # only locals are false        # global and masked ones are true
         remove_from_windowed_attention_mask = (attention_mask != 0)[:, :, None, None]
-
         # cast to fp32/fp16 then replace 1's with -inf
         float_mask = remove_from_windowed_attention_mask.type_as(query_vectors).masked_fill(
             remove_from_windowed_attention_mask, -10000.0

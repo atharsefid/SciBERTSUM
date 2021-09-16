@@ -83,7 +83,7 @@ class Trainer(object):
         self.report_manager = report_manager
         pos_weight = torch.Tensor([5]).to(device=self.gpu_rank)  # The weight is 4 since the number of negative sentences are 4 times positive sentences.
         self.loss = torch.nn.BCEWithLogitsLoss(pos_weight=pos_weight)
-        self.no_reduce_loss = torch.nn.BCEWithLogitsLoss(pos_weight=pos_weight, reduce=False)
+        self.no_reduce_loss = torch.nn.BCEWithLogitsLoss(pos_weight=pos_weight, reduction='none')
         assert grad_accum_count > 0
         # Set model in training mode.
         if model:

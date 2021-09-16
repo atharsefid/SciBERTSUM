@@ -41,7 +41,7 @@ class SentenceExtractor(nn.Module):
         self.length_dropout = nn.Dropout(0.2)
 
         self.sent_correlation_weight = torch.nn.Parameter(torch.zeros(self.hidden_size, self.hidden_size))
-        torch.nn.init.xavier_uniform(self.sent_correlation_weight)
+        torch.nn.init.xavier_uniform_(self.sent_correlation_weight)
         self.correlation_layer = nn.Linear(self.hidden_size, self.output_size)
         self.correlation_dropout = nn.Dropout(0.2)
 

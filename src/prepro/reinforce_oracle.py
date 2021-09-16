@@ -65,21 +65,8 @@ def build_oracle_rewards(args, source, target, selected_sents):
     arguments_list = []
     pool.close()
     pool.terminate()
-    # pool.join()
     del pool
     pool = Pool(args.n_cpus)
-
-    # comb = itertools.combinations(top_rouge_sentences, sent_limit)
-    # selection_pool = []
-    # for _ in range(5* max_oracles):
-    #     nxt = next(comb, None)
-    #     if nxt:
-    #         selection_pool.append(list(nxt))
-    #     else:
-    #         break
-    # print('first' ,selection_pool[0])
-    # print('end  ', selection_pool[-1])
-    # oracle_rewards = random.sample(selection_pool, min(max_oracles, len(selection_pool)))
     argument_set = set()
     combination_size = nCr(len(top_rouge_sentences), sent_limit)
     while len(argument_set) < min(max_oracles,combination_size) :
