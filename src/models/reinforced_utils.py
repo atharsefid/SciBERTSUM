@@ -1,3 +1,4 @@
+import numpy
 import torch
 import torch.nn as nn
 import torch as t
@@ -5,7 +6,9 @@ from torch.autograd import Variable
 from torch.nn import Parameter
 import torch.nn.functional as F
 import numpy as np
-
+from multiprocessing import Pool
+from scipy import spatial
+import networkx as nx
 
 
 
@@ -44,8 +47,30 @@ class SentenceExtractor(nn.Module):
         torch.nn.init.xavier_uniform_(self.sent_correlation_weight)
         self.correlation_layer = nn.Linear(self.hidden_size, self.output_size)
         self.correlation_dropout = nn.Dropout(0.2)
+        self.pagerank = False
+        if self.pagerank:
+            self.ensemble = nn.Linear(2,1) # combine results of pagerank and our model
 
 
+    def torch_pagerank(self, sentence_embeddings, max_iter=100, alpha=0.85, tol=1.0e-6):
+        sentence_embeddings = sentence_embeddings / torch.norm(sentence_embeddings)
+        similarity_matrix = torch.mm(sentence_embeddings, torch.transpose(sentence_embeddings, 1,0))
+        device = similarity_matrix.device
+        N, _ = similarity_matrix.shape
+        x = (torch.ones(1, N) / N).to(device)
+        p = (torch.ones(N) / N).to(device)
+
+        out_degree = torch.sum(similarity_matrix, dim=1).unsqueeze(1).expand(N, N)
+        similarity_matrix = similarity_matrix / out_degree
+
+        for _ in range(max_iter):
+            xlast = x
+            x = alpha * torch.matmul(xlast, similarity_matrix)
+            x += (1.0 - alpha) * p
+            err = torch.sum(torch.abs(x - xlast))
+            if err < N * tol:
+                return x
+        return None
 
     def forward(self, sentence_embeddings, position_embedding, section_embedding,context_embedding, length_embedding, doc_embedding):
         """
@@ -76,7 +101,13 @@ class SentenceExtractor(nn.Module):
         # this line is to identify sentences that are correlated to other sentences (they have shared words with other sents). So better to exclude them.
         correlation_embed = torch.relu(self.correlation_dropout(self.correlation_layer(torch.matmul(correlation_weight, sent_embed_s))))
         sentence_features = torch.cat( [semantic_embed, position_embed, section_embed.squeeze(0), length_embed.squeeze(0), context_embed.squeeze(0), correlation_embed], dim =1)
-        scores = self.final_layer(torch.relu(sentence_features))
+        if self.pagerank:
+            page_rank_scores = self.torch_pagerank(sentence_embeddings[0]).transpose(1,0)
+            model_scores = self.final_layer(torch.relu(sentence_features))
+            scores = self.ensemble(torch.relu(torch.cat([model_scores, page_rank_scores], dim=1)))
+
+        else:
+            scores = self.final_layer(torch.relu(sentence_features))
         return scores
 
 
@@ -109,20 +140,3 @@ class DocumentEncoder(nn.Module):
         return_value = torch.mean(attn_vectors, 1)
         return return_value
 
-
-test = False
-if test:
-    sentence_vectors = torch.Tensor(2,3,10)
-    DE = DocumentEncoder(2,10, 10)
-    doc_vector =DE(sentence_vectors)
-    print('document vector:::', doc_vector.shape)
-
-    class Config:
-        def __init__(self):
-            self.hidden_size= 10
-
-    c = Config()
-
-    extractor = SentenceExtractor(c)
-    logits  = extractor(sentence_vectors,doc_vector)
-    print('logits::::', logits.shape)

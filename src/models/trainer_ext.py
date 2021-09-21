@@ -294,8 +294,8 @@ class Trainer(object):
             batch_size, sent_count = batch.mask_cls.shape
             sent_scores = self.model(batch.src, batch.sections, batch.token_sections, batch.segs, batch.clss, batch.mask_src, batch.mask_cls)
             sent_scores = sent_scores[ :sent_count]  # remove padded items from window size
-            # loss = self.loss(sent_scores, batch.src_sent_labels.float()[0])
-            loss = self.reinforced_cross_entropy(sent_scores.unsqueeze(0), batch.rf_labels, batch.rf_rewards)
+            loss = self.loss(sent_scores, batch.src_sent_labels.float()[0])
+            # loss = self.reinforced_cross_entropy(sent_scores.unsqueeze(0), batch.rf_labels, batch.rf_rewards)
 
             loss.backward()
 

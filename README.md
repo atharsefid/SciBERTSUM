@@ -66,6 +66,10 @@ To continue training from a checkpoint
 ```
 python train.py  -ext_dropout 0.1 -lr 2e-3  -train_from ../models/model_step_99000.pt -visible_gpus 1,2,3 -report_every 200 -save_checkpoint_steps 1000 -batch_size 1 -train_steps 100000 -accum_count 2  -log_file ../logs/ext_bert -use_interval true -warmup_steps 10000
 ```
+
+To select the best model on validation set:
+```
+python train.py -mode validate -valid_batch_size 1 -log_file ../logs/ext_bert_valid -test_all True -model_path ../models -sep_optim true -use_interval true -visible_gpus 0 -alpha 0.95 -result_path ../results/ext ```
 ### Test
 
 ```
