@@ -34,7 +34,7 @@ class SentenceExtractor(nn.Module):
         self.context_layer = nn.Linear(self.hidden_size, self.output_size)
         self.length_layer = nn.Linear(self.hidden_size, self.output_size)
 
-        self.final_layer = nn.Linear(6 * self.output_size, 1)
+        self.final_layer = nn.Linear(6 * self.output_size + 2, 1) # +2 is for media and reference features
 
 
         self.semantic_dropout = nn.Dropout(0.5)
@@ -72,7 +72,7 @@ class SentenceExtractor(nn.Module):
                 return x
         return None
 
-    def forward(self, sentence_embeddings, position_embedding, section_embedding,context_embedding, length_embedding, doc_embedding):
+    def forward(self, sentence_embeddings, position_embedding, section_embedding,context_embedding, length_embedding, doc_embedding, media, references):
         """
         :param sentence_embeddings: batch_size, num_sents, hidden_size
         :param position_embeddings: batch_size, num_sents, hidden_size
@@ -100,7 +100,7 @@ class SentenceExtractor(nn.Module):
         correlation_weight  = torch.tanh(torch.matmul(torch.matmul(sent_embed_s, self.sent_correlation_weight) ,torch.transpose(sent_embed_s, 1, 0)))
         # this line is to identify sentences that are correlated to other sentences (they have shared words with other sents). So better to exclude them.
         correlation_embed = torch.relu(self.correlation_dropout(self.correlation_layer(torch.matmul(correlation_weight, sent_embed_s))))
-        sentence_features = torch.cat( [semantic_embed, position_embed, section_embed.squeeze(0), length_embed.squeeze(0), context_embed.squeeze(0), correlation_embed], dim =1)
+        sentence_features = torch.cat( [semantic_embed, position_embed, section_embed.squeeze(0), length_embed.squeeze(0), context_embed.squeeze(0), correlation_embed, media[0].unsqueeze(1), references[0].unsqueeze(1)], dim =1)
         if self.pagerank:
             page_rank_scores = self.torch_pagerank(sentence_embeddings[0]).transpose(1,0)
             model_scores = self.final_layer(torch.relu(sentence_features))

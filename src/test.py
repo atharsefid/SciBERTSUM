@@ -23,7 +23,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("-encoder", default='bert', type=str, choices=['bert', 'baseline'])
     parser.add_argument("-mode", default='train', type=str, choices=['train', 'validate', 'test'])
-    parser.add_argument("-bert_data_path", default='../bert_data_reinforced')
+    parser.add_argument("-bert_data_path", default='../media_bert_data')
     parser.add_argument("-model_path", default='../models/') #fix
     parser.add_argument("-tensorboard_log_path", default='../tensorboard_log/')# fix
     # parser.add_argument("-model_path", default='../alakimodels/')  # fix

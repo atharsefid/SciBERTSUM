@@ -19,52 +19,61 @@ class Batch(object):
         """Create a Batch from a list of examples."""
         if data is not None:
             self.batch_size = len(data)
-            pre_src = [x[0] for x in data]
-            pre_sections = [x[1] for x in data]
-            pre_token_sections = [x[2] for x in data]
-            pre_tgt = [x[3] for x in data]
-            pre_segs = [x[4] for x in data]
-            pre_clss = [x[5] for x in data]
-            pre_src_sent_labels = [x[6] for x in data]
-            pre_rf_labels_set = [x[7] for x in data]
-            pre_rf_reward_set = [x[8] for x in data]
+            pre_src = [x["src"] for x in data]
+            pre_sections = [x["sections"] for x in data]
+            pre_token_sections = [x["token_sections"] for x in data]
+            pre_tgt = [x["tgt"] for x in data]
+            pre_segs = [x["segs"] for x in data]
+            pre_clss = [x["clss"] for x in data]
+            pre_references = [x["references"] for x in data]
+            pre_media = [x["media"] for x in data]
+            pre_src_sent_labels = [x["src_sent_labels"] for x in data]
 
 
+
+            media = torch.tensor(self._pad(pre_media, -1)).to(int)
+            references = torch.tensor(self._pad(pre_references, -1)).to(int)
             src = torch.tensor(self._pad(pre_src, 0)).to(int)
             tgt = torch.tensor(self._pad(pre_tgt, 0)).to(int)
             segs = torch.tensor(self._pad(pre_segs, 0)).to(int)
-            token_sections = torch.tensor(self._pad(pre_token_sections, 0)).to(int)
-            mask_src = ~ (src == 0).to(int) # fix I don't know what is this mask_src
-            mask_tgt = ~ (tgt == 0)
-
             clss = torch.tensor(self._pad(pre_clss, -1)).to(int)
+            token_sections = torch.tensor(self._pad(pre_token_sections, 0)).to(int)
             src_sent_labels = torch.tensor(self._pad(pre_src_sent_labels, 0)).to(int)
             sections = torch.tensor(self._pad(pre_sections, 0)).to(int)
 
-            pre_rf_labels_set = [self._pad(rf_labels, 0) for rf_labels in pre_rf_labels_set]
-            rf_labels_set = torch.tensor(pre_rf_labels_set).to(int).to(device)
-            rf_reward_set = torch.tensor(pre_rf_reward_set).to(device)
-            setattr(self, 'rf_labels', rf_labels_set ) # ******
-            setattr(self, 'rf_rewards', rf_reward_set)
 
+            mask_src = ~ (src == 0).to(int)
+            mask_tgt = ~ (tgt == 0)
             mask_cls = ~ (clss == -1)
             clss[clss == -1] = 0
+
+
             setattr(self, 'clss', clss.to(device))
             setattr(self, 'mask_cls', mask_cls.to(device))
             setattr(self, 'src_sent_labels', src_sent_labels.to(device))
             setattr(self, 'sections', sections.to(device))
-
             setattr(self, 'src', src.to(device))
             setattr(self, 'tgt', tgt.to(device))
             setattr(self, 'segs', segs.to(device))
             setattr(self, 'token_sections', token_sections.to(device))
             setattr(self, 'mask_src', mask_src.to(device))
             setattr(self, 'mask_tgt', mask_tgt.to(device))
+            setattr(self, 'references', references.to(device))
+            setattr(self, 'media', media.to(device))
+
+            if any(len(x["rf_labels_set"]) > 0 for x in data):
+                pre_rf_labels_set = [x["rf_labels_set"] for x in data]
+                pre_rf_reward_set = [x["rf_reward_set"] for x in data]
+                pre_rf_labels_set = [self._pad(rf_labels, 0) for rf_labels in pre_rf_labels_set]
+                rf_labels_set = torch.tensor(pre_rf_labels_set).to(int).to(device)
+                rf_reward_set = torch.tensor(pre_rf_reward_set).to(device)
+                setattr(self, 'rf_labels', rf_labels_set)
+                setattr(self, 'rf_rewards', rf_reward_set)
 
             if is_test:
-                src_str = [x[-2] for x in data]
+                src_str = [x["src_txt"] for x in data]
                 setattr(self, 'src_str', src_str)
-                tgt_str = [x[-1] for x in data]
+                tgt_str = [x["tgt_txt"] for x in data]
                 setattr(self, 'tgt_str', tgt_str)
 
     def __len__(self):
@@ -105,7 +114,7 @@ def load_dataset(args, corpus_type, shuffle):
 def ext_batch_size_fn(new, count):
     if len(new) == 4:
         pass
-    src, labels = new[0], new[4]
+    src, labels = new['src'], new['src_sent_labels']
     global max_n_sents, max_n_tokens, max_size
     if count == 1:
         max_size = 0
@@ -156,16 +165,13 @@ class Dataloader(object):
 
 
 class DataIterator(object):
-    def __init__(self, args, dataset, batch_size, device=None, is_test=False,
-                 shuffle=True):
+    def __init__(self, args, dataset, batch_size, device=None, is_test=False, shuffle=True):
         self.args = args
         self.batch_size, self.is_test, self.dataset = batch_size, is_test, dataset
         self.iterations = 0
         self.device = device
         self.shuffle = shuffle
-
         self.sort_key = lambda x: len(x[1])
-
         self._iterations_this_epoch = 0
         self.batch_size_fn = ext_batch_size_fn
 
@@ -180,13 +186,16 @@ class DataIterator(object):
         tgt = ex['tgt'][:self.args.max_tgt_len][:-1] + [2]
         src_sent_labels = ex['src_sent_labels']
         segs = ex['segs']
-        if not self.args.use_interval:
-            segs = [0] * len(segs)
         clss = ex['clss']
         src_txt = ex['src_txt']
         tgt_txt = ex['tgt_txt']
         sections = ex['sections']
+        media = ex['media']
+        references = ex['references']
         token_sections = ex['token_sections']
+
+        if not self.args.use_interval:
+            segs = [0] * len(segs)
         end_id = [src[-1]]
         last_is_cls = False
         if len(src) > self.args.max_pos-1 and src[self.args.max_pos-1] == 101:
@@ -195,28 +204,40 @@ class DataIterator(object):
         segs = segs[:self.args.max_pos]
         token_sections = token_sections[:self.args.max_pos]
         max_sent_id = bisect.bisect_left(clss, self.args.max_pos)
+
         src_sent_labels = src_sent_labels[:max_sent_id]
         clss = clss[:max_sent_id]
         sections = sections[:max_sent_id]
+        media = media[:max_sent_id]
+        references = references[:max_sent_id]
+
         if last_is_cls:
             src_sent_labels.pop()
             clss.pop()
             sections.pop()
+            media.pop()
+            references.pop()
 
         # Multiple label and rewards
-        rougescore_sentids = ex['reward_oracle']
         rf_labels_set = []  # FLAG.num_sample_rollout, FLAGS.max_doc_length, FLAGS.target_label_size
         rf_reward_set = []  # FLAG.num_sample_rollout, FLAGS.max_doc_length, FLAGS.target_label_size
-        for idx in range(self.args.num_sample_rollout):
-            if idx >= len(rougescore_sentids):
-                idx = 0 # copy the best
-            rf_labels_set.append( [1 if (sentID in rougescore_sentids[idx][1]) else 0 for sentID in range(len(clss))])
-            rf_reward_set.append(rougescore_sentids[idx][0])
+        if 'reward_oracle' in ex:
+            rougescore_sentids = ex['reward_oracle']
+            for idx in range(self.args.num_sample_rollout):
+                if idx >= len(rougescore_sentids):
+                    idx = 0 # copy the best
+                rf_labels_set.append( [1 if (sentID in rougescore_sentids[idx][1]) else 0 for sentID in range(len(clss))])
+                rf_reward_set.append(rougescore_sentids[idx][0])
 
+        data_point = {"src":src, "sections":sections, "media": media, "references":references,
+                      "token_sections":token_sections, "tgt":tgt, "segs":segs, "clss":clss,
+                      "src_sent_labels":src_sent_labels, "rf_labels_set":rf_labels_set, "rf_reward_set":rf_reward_set}
         if is_test:
-            return src, sections, token_sections, tgt, segs, clss, src_sent_labels, rf_labels_set, rf_reward_set, src_txt, tgt_txt,
+            data_point["src_txt"]= src_txt
+            data_point["tgt_txt"] = tgt_txt
+            return data_point
         else:
-            return src, sections, token_sections, tgt, segs, clss, src_sent_labels, rf_labels_set, rf_reward_set
+            return data_point
 
     def batch_buffer(self, data, batch_size):
         minibatch, size_so_far = [], 0
@@ -257,7 +278,7 @@ class DataIterator(object):
         data = self.data()  # just shuffles the dataset which is for example train.0
         for buffer in self.batch_buffer(data, self.batch_size * 300):
 
-            p_batch = sorted(buffer, key=lambda x: len(x[2]))
+            p_batch = sorted(buffer, key=lambda x: len(x['token_sections']))
             p_batch = self.batch(p_batch, self.batch_size)
 
             p_batch = list(p_batch)

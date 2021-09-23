@@ -141,7 +141,7 @@ class LongExtTransformerEncoder(nn.Module):
         self.sentenceExtractor = SentenceExtractor(self.config)
         self.layer_norm = nn.LayerNorm(self.config.hidden_size, eps=1e-6)
 
-    def forward(self, sent_vecs, sent_lengths, sections, mask, extended_mask):
+    def forward(self, sent_vecs, sent_lengths, sections, mask, extended_mask, media, references):
         is_index_masked = extended_mask < 0  # masking tokens (-10000) are true in and local(0) or global(+1000) attentions are False
         is_index_global_attn = extended_mask > 0  # indices with global attention are True others False
         is_global_attn = is_index_global_attn.flatten().any().item()  # True if at least one index with global attention
@@ -176,6 +176,6 @@ class LongExtTransformerEncoder(nn.Module):
                                              section_embedding,
                                              context_embeddings,
                                              length_embedding,
-                                             document_embedding)
+                                             document_embedding, media, references)
 
         return sent_scores.squeeze(-1)

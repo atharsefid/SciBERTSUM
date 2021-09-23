@@ -22,43 +22,59 @@ from prepro.reinforce_oracle import build_oracle_rewards
 nyt_remove_words = ["photo", "graph", "chart", "map", "table", "drawing"]
 
 
-def read_pdf_sections(paper, ignore_acknowledgement=False):
+def read_pdf_paragraphs(paper, ignore_acknowledgement=False):
     pdfxml = open(paper, 'rb')
     contents = pdfxml.read()
     soup = BeautifulSoup(contents, 'html.parser')
-    abstracts = soup.find_all('abstract')
-    for abstract in abstracts:
-        # yield 'abstract'
-        yield abstract.get_text()
-    divs = soup.find_all('div')
-    for i, div in enumerate(divs):
-        head_len = 0
-        if 'type' in div.attrs and div.attrs['type'] == 'references':
-            continue
-        if ignore_acknowledgement and 'type' in div.attrs and div.attrs['type'] == 'acknowledgement':
-            continue
-        head = div.find('head')
-        if head is not None:
-            head_text = head.get_text()
-            head_len = len(head_text)
-            # yield head_text
-        yield div.get_text()[head_len:]
+    sections = soup.find_all('div')
+    paragraphs_texts = []
+    paragraph_features = []
+
+    for i, section in enumerate(sections):
+        paragraphs = section.find_all('p')
+
+        for paragraph in paragraphs:
+            paragraph_text = paragraph.get_text()
+            paragraphs_texts.append(paragraph_text)
+            references = paragraph.find_all('ref')
+            has_media = False
+            has_bib = False
+            for reference in references:
+                if 'type' in reference.attrs and (reference.attrs['type'] == 'figure' or reference.attrs['type'] == 'table'):
+                    has_media = True
+                    break
+                if 'type' in reference.attrs and reference.attrs['type'] == 'bibr' :
+                    has_bib = True
+                    break
+            features = str(i+1) + '\t'
+            if has_media:
+                features = features + '1' + '\t'
+            else:
+                features = features + '0' + '\t'
+            if has_bib:
+                features = features + '1' + '\t'
+            else:
+                features = features + '0' + '\t'
+            paragraph_features.append(features)
+    return paragraphs_texts, paragraph_features
 
 
-def _extract_pdf_sections(paper):
+def _extract_pdf_paragraphs(paper):
     _, _, directory, name = paper.split('/')
-    outfile = open('../raw_data/' + directory + '/'+directory + '.sections.txt', 'w')
-    for line in read_pdf_sections(paper):
-        outfile.write(line.strip() + '\n')
+    outfile = open('../raw_data/' + directory + '/'+directory + '.paragraphs.txt', 'w')
+    media_file = open('../raw_data/' + directory + '/' + directory + '.paragraph_features.txt', 'w')
+    paragraphs, media = read_pdf_paragraphs(paper)
+    outfile.write( '\n'.join(paragraphs))
+    media_file.write('\n'.join(media))
     outfile.close()
 
 
-def extract_pdf_sections(args):
+def extract_pdf_paragraphs(args):
     papers = []
     for paper in glob('../raw_data/*/*.tei.xml'):
         papers.append(paper)
     pool = Pool(20)
-    result = pool.map(_extract_pdf_sections, papers)
+    result = pool.map(_extract_pdf_paragraphs, papers)
     pool.close()
     pool.join()
 
@@ -125,7 +141,7 @@ def tokenize(args):
     temp_dir = os.path.abspath(args.save_path)
     papers = []
     with open("mapping_for_corenlp.txt", "w") as f:
-        for paper in glob('../raw_data/*/*.sections.txt'):
+        for paper in glob('../raw_data/*/*.paragraphs.txt'):
             papers.append(paper)
             f.write("%s\n" % paper)
     _tokenize(papers, temp_dir)
@@ -240,7 +256,7 @@ class BertData:
         self.cls_vid = self.tokenizer.vocab[self.cls_token]
         self.pad_vid = self.tokenizer.vocab[self.pad_token]
 
-    def preprocess(self, src, sections, tgt, sent_labels, use_bert_basic_tokenizer=False, is_test=False):
+    def preprocess(self, src, sections, media, references, tgt, sent_labels, use_bert_basic_tokenizer=False, is_test=False):
         if not is_test and len(src) == 0:
             return None
 
@@ -256,9 +272,11 @@ class BertData:
         sent_labels = [_sent_labels[i] for i in idxs]
         src = src[:self.args.max_src_nsents]
         sent_labels = sent_labels[:self.args.max_src_nsents]
-        _sections = [sections[i] for i in idxs]
-        _sections = _sections[:self.args.max_src_nsents]
-        if not is_test and len(src) < self.args.min_src_nsents:
+        sections = [sections[i] for i in idxs][:self.args.max_src_nsents]
+        media = [media[i] for i in idxs][:self.args.max_src_nsents]
+        references = [references[i] for i in idxs][:self.args.max_src_nsents]
+
+        if len(src) < self.args.min_src_nsents:
             return None
 
         src_txt = [' '.join(sent) for sent in src]
@@ -275,12 +293,13 @@ class BertData:
         token_sections = []  # This array contains 0 for all tokens in the first sections, 1 for all tokens in second section
         segments_ids = []
         # intermittent labeling of sents based on being odd or even
+        print(len(segs), len(sections))
         for i, s in enumerate(segs):
             if i % 2 == 0:
                 segments_ids += s * [0]
             else:
                 segments_ids += s * [1]
-            token_sections += s * [_sections[i]]
+            token_sections += s * [sections[i]]
 
         cls_ids = [i for i, t in enumerate(src_subtoken_idxs) if t == self.cls_vid]
         sent_labels = sent_labels[:len(cls_ids)]
@@ -298,12 +317,12 @@ class BertData:
         src_txt = [original_src_txt[i] for i in idxs]
 
         assert (len(token_sections) == len(segments_ids)), f'token sections and segment ids do not have same length'
-        assert (len(_sections) == len(sent_labels) == len(cls_ids)), \
-            f'preprocessed dimensions do not match {len(_sections)}, {len(sent_labels)}, {len(cls_ids)}'
+        assert (len(sections) == len(sent_labels) == len(cls_ids)), \
+            f'preprocessed dimensions do not match {len(sections)}, {len(sent_labels)}, {len(cls_ids)}'
         b_data_dict = {"src": src_subtoken_idxs, "tgt": tgt_subtoken_idxs,
                        "src_sent_labels": sent_labels, "segs": segments_ids, 'clss': cls_ids,
                        'src_txt': src_txt, "tgt_txt": tgt_txt, "sections": sections, "token_sections": token_sections,
-                       'src_list':src, 'tgt_list': tgt}
+                       'src_list':src, 'tgt_list': tgt, 'media':media, "references": references}
         return b_data_dict
 
 
@@ -333,20 +352,30 @@ def get_text_clean_tika(args):
 
 
 def load_pdf_ppt_jsons(pdf_ppt_jsons, lower=True, extractive=True):
-    pdf_json, ppt_json = pdf_ppt_jsons
+    pdf_json, features_file, ppt_json = pdf_ppt_jsons
     source = []
     tgt = []
     sections = []
-    section = 1
+    media_context = []
+    reference_context = []
+    paragraph_id = 0
+
+    # load features file
+    lines = open(features_file, 'r').readlines()
+    paragraph_features = [list(map(int,line)) for line in map(str.split, lines)]
     for sent in json.load(open(pdf_json))['sentences']:
         tokens = [t['word'] for t in sent['tokens']]
         after_tokens = [t['after'] for t in sent['tokens']]
         if lower:
             tokens = [t.lower() for t in tokens]
         source.append(tokens)
-        sections.append(section)
+        sections.append(paragraph_features[paragraph_id][0])
+        media_context.append(paragraph_features[paragraph_id][1])
+        reference_context.append(paragraph_features[paragraph_id][2])
         if len(after_tokens) > 0 and after_tokens[-1] == '\n':
-            section += 1
+            paragraph_id += 1
+
+    assert len(source) == len(sections) == len(media_context) == len(reference_context), f'ERROR: Different feature lengths'
 
     for sent in json.load(open(ppt_json))['sentences']:
         tokens = [t['word'] for t in sent['tokens']]
@@ -356,7 +385,7 @@ def load_pdf_ppt_jsons(pdf_ppt_jsons, lower=True, extractive=True):
 
     source = [clean(' '.join(sent)).split() for sent in source]
     tgt = [clean(' '.join(sent)).split() for sent in tgt]
-    return {'src': source, 'sections': sections, 'tgt': tgt}
+    return {'src': source, 'sections': sections, 'media':media_context, 'reference':reference_context, 'tgt': tgt}
 
 
 def clean_paper_jsons(args):
@@ -367,14 +396,15 @@ def clean_paper_jsons(args):
 
         main_path = '../raw_data/' + i + '/'
         ppt_path = main_path + i + '.clean_tika.txt.json'
-        pdf_path = main_path + i + '.sections.txt.json'
+        pdf_path = main_path + i + '.paragraphs.txt.json'
+        features_path = main_path + i + '.paragraph_features.txt'
         i = int(i)
         if i < 4000:
-            train_set.append((pdf_path, ppt_path))
+            train_set.append((pdf_path, features_path, ppt_path))
         if 4000 < i < 4250:
-            val_set.append((pdf_path, ppt_path))
+            val_set.append((pdf_path, features_path, ppt_path))
         if 4250 < i < 4500:
-            test_set.append((pdf_path, ppt_path))
+            test_set.append((pdf_path, features_path, ppt_path))
     print('train, val, test set sizes are: ', len(train_set), len(val_set), len(test_set))
     corpora = {'train': train_set, 'valid': val_set, 'test': test_set}
     for corpus_type in ['train', 'valid', 'test']:
@@ -415,13 +445,13 @@ def format_to_bert(args):
             real_name = json_f.split('/')[-1]
             a_lst.append((corpus_type, json_f, args, pjoin(args.save_path, real_name.replace('json', 'bert.pt'))))
         print('document for corpus type:', corpus_type, a_lst)
-        for a in a_lst: # fix
-            _format_to_bert(a)
-        # pool = Pool(args.n_cpus)
-        # for d in pool.imap(_format_to_bert, a_lst):
-        #     pass
-        # pool.close()
-        # pool.join()
+        # for a in a_lst: # fix
+        #     _format_to_bert(a)
+        pool = Pool(args.n_cpus)
+        for d in pool.imap(_format_to_bert, a_lst):
+            pass
+        pool.close()
+        pool.join()
 
 def _format_to_bert(params):
     corpus_type, json_file, args, save_file = params
@@ -436,8 +466,7 @@ def _format_to_bert(params):
     jobs = json.load(open(json_file))
     datasets = []
     for ii, d in enumerate(jobs):
-        print('job id', ii)
-        source, sections, tgt = d['src'], d['sections'], d['tgt']
+        source, sections, media, reference, tgt = d['src'], d['sections'], d['media'], d['reference'], d['tgt']
         # greedily selects the top 0.2 sentences and labels them as 1
         summary_size = int(0.2 * len(source))
 
@@ -447,15 +476,15 @@ def _format_to_bert(params):
             source = [' '.join(s).lower().split() for s in source]
             tgt = [' '.join(s).lower().split() for s in tgt]
 
-        b_data = bert.preprocess(source, sections, tgt, sent_labels,
+        b_data = bert.preprocess(source, sections, media, reference, tgt, sent_labels,
                                  use_bert_basic_tokenizer=args.use_bert_basic_tokenizer,
                                  is_test=is_test)
         import numpy
         if b_data is None:
             continue
 
-        rougescore_sentids = build_oracle_rewards(args, b_data['src_list'], b_data['tgt_list'], b_data['src_sent_labels'])
-        b_data['reward_oracle'] = rougescore_sentids
+        # rougescore_sentids = build_oracle_rewards(args, b_data['src_list'], b_data['tgt_list'], b_data['src_sent_labels'])
+        # b_data['reward_oracle'] = rougescore_sentids
         datasets.append(b_data)
     logger.info('Processed %d instances.' % len(datasets))
     logger.info('Saving to %s' % save_file)

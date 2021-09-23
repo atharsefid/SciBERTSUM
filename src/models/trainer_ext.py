@@ -163,16 +163,11 @@ class Trainer(object):
 
         with torch.no_grad():
             for batch in valid_iter:
-                src = batch.src
                 labels = batch.src_sent_labels
-                segs = batch.segs
-                clss = batch.clss
-                mask = batch.mask_src
                 mask_cls = batch.mask_cls
-                sections = batch.sections
-                token_sections = batch.token_sections
                 batch_size, sent_count = mask_cls.shape
-                sent_scores = self.model(src, sections, token_sections, segs, clss, mask, mask_cls)
+                sent_scores = self.model(batch.src, batch.sections, batch.token_sections, batch.segs, batch.clss,
+                                         batch.mask, batch.mask_cls, batch.media, batch.references)
                 sent_scores = sent_scores[:sent_count]
                 loss = self.loss(sent_scores, labels.float()[0])
                 loss = (loss * mask_cls.float()).sum()
@@ -226,7 +221,7 @@ class Trainer(object):
                                             range(batch.batch_size)]
                         else:
                             batch_size, sent_count = batch.mask_cls.shape
-                            sent_scores = self.model(batch.src, batch.sections, batch.token_sections, batch.segs, batch.clss, batch.mask_src, batch.mask_cls)
+                            sent_scores = self.model(batch.src, batch.sections, batch.token_sections, batch.segs, batch.clss, batch.mask_src, batch.mask_cls, batch.media, batch.references)
                             sent_scores = sent_scores[ :sent_count]  # remove padded items from returned scores
                             loss = self.loss(sent_scores, batch.src_sent_labels.float()[0])
                             batch_stats = Statistics(float(loss.cpu().data.numpy()), len(batch.src_sent_labels))
@@ -270,9 +265,9 @@ class Trainer(object):
                             # if self.args.recall_eval:
                             #     print('This part limits the size of the predicted summary to the size of the gold summary')
                             #     _pred = ' '.join(_pred.split()[:len(batch.tgt_str[i].split())])
-
                             pred.append(_pred)
                             gold.append(batch.tgt_str[i])
+
                         for i in range(len(gold)):
                             save_gold.write(gold[i].strip() + '\n')
                         for i in range(len(pred)):
@@ -292,7 +287,7 @@ class Trainer(object):
             if self.grad_accum_count == 1:
                 self.model.zero_grad()
             batch_size, sent_count = batch.mask_cls.shape
-            sent_scores = self.model(batch.src, batch.sections, batch.token_sections, batch.segs, batch.clss, batch.mask_src, batch.mask_cls)
+            sent_scores = self.model(batch.src, batch.sections, batch.token_sections, batch.segs, batch.clss, batch.mask_src, batch.mask_cls, batch.media, batch.references)
             sent_scores = sent_scores[ :sent_count]  # remove padded items from window size
             loss = self.loss(sent_scores, batch.src_sent_labels.float()[0])
             # loss = self.reinforced_cross_entropy(sent_scores.unsqueeze(0), batch.rf_labels, batch.rf_rewards)

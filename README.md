@@ -16,10 +16,10 @@ We will need Stanford CoreNLP to tokenize the data. Download it [here](https://s
 export CLASSPATH=/path/to/stanford-corenlp-4.2.2/stanford-corenlp-4.2.2.jar
 ```
 replacing `/path/to/` with the path to where you saved the `stanford-corenlp-4.2.2` directory. 
-#### step 3. extracting sections from GROBID XML files
+#### step 3. extracting paragraphs from GROBID XML files
 
 ```
-python preprocess.py -mode extract_pdf_sections -log_file ../logs/extract_section.log
+python preprocess.py -mode extract_pdf_paragraphs -log_file ../logs/extract_paragraphs.log
 ```
 
 #### step 4. extracting text from TIKA XML files
@@ -38,20 +38,16 @@ python preprocess.py -mode tokenize  -save_path ../temp -log_file ../logs/tokeni
 ####  Step 6. Extract source, section, and target from tokenized files 
 
 ```
-python preprocess.py -mode clean_paper_jsons -save_path ../json_data/  -n_cpus 10 -log_file ../logs/build_json.log
+python preprocess.py -mode clean_paper_jsons -save_path ../media_json_data/  -n_cpus 30 -log_file ../logs/build_media_json.log
 ```
 
 
 #### Step 7. Generate BERT `.pt` files from source, sections and targets
 
 ```
-python preprocess.py -mode format_to_bert -raw_path ../json_data/ -save_path ../bert_data  -lower -n_cpus 40 -log_file ../logs/build_bert_files.log
+python preprocess.py -mode format_to_bert -raw_path ../media_json_data/ -save_path ../media_bert_data  -lower -n_cpus 40 -log_file ../logs/build_bert_files.log
 ```
 
-# reinforced pt generation
-```
-python preprocess.py -mode format_to_bert -raw_path ../json_data/ -save_path ../rf_bert_data  -lower -n_cpus 40 -log_file ../logs/rf_build_bert_files.log
-```
 
 ## Model Training
 
@@ -60,7 +56,7 @@ python preprocess.py -mode format_to_bert -raw_path ../json_data/ -save_path ../
 ### Train
 
 ```
-python train.py  -ext_dropout 0.1 -lr 2e-3  -visible_gpus 1,2,3 -report_every 200 -save_checkpoint_steps 1000 -batch_size 1 -train_steps 100000 -accum_count 2  -log_file ../logs/ext_bert -use_interval true -warmup_steps 10000
+python train.py -ext_dropout 0.4 -lr 2e-1  -visible_gpus 3 -report_every 10 -save_checkpoint_steps 100 -batch_size 1 -train_steps 100000 -accum_count 10  -log_file ../logs/ext_bert -use_interval true -warmup_steps 100  
 ```
 To continue training from a checkpoint
 ```
