@@ -94,7 +94,6 @@ def load_xml(p):
             title = [p.text.lower().split() for p in list(title_node[0].iter('hl1'))][0]
         except:
             print(p)
-
     else:
         return None, None
     byline_node = list(root.iter('byline'))
@@ -293,7 +292,6 @@ class BertData:
         token_sections = []  # This array contains 0 for all tokens in the first sections, 1 for all tokens in second section
         segments_ids = []
         # intermittent labeling of sents based on being odd or even
-        print(len(segs), len(sections))
         for i, s in enumerate(segs):
             if i % 2 == 0:
                 segments_ids += s * [0]

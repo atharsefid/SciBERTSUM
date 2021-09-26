@@ -105,5 +105,6 @@ def plot_xent_results():
     plt.show()
 
 
+
 # plot_xent_results()
-plot_data_statistics()
+# plot_data_statistics()

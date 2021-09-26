@@ -199,6 +199,13 @@ class Trainer(object):
                     return True
             return False
 
+        def _block_tri2(c, p):  # p is the set of previously selected sentences
+            tri_c = _get_ngrams(3, c.split())
+            tri_summary = _get_ngrams(3, (' '.join(p)).split())
+            if len(tri_c.intersection(tri_summary)) > 5:
+                return True
+            return False
+
         # Set model in validating mode.
         if not cal_lead and not cal_oracle:
             self.model.eval()
@@ -228,10 +235,11 @@ class Trainer(object):
                             stats.update(batch_stats)
 
                             sent_scores = sent_scores.cpu().data.numpy()
+                            print(' ---- scores', sent_scores[:20])
                             if (sent_scores == np.array([0.5] * sent_scores.shape[0])).any():
                                 print(' ((( all scores equal to 0.5 )))')
                             selected_ids = [np.argsort(-sent_scores)]
-                            print('--- selected_ids', selected_ids)
+                            # print('--- selected_ids', selected_ids)
                         # i is the document number in the batch
                         for i, idx in enumerate(selected_ids):
                             _pred = []
@@ -240,27 +248,24 @@ class Trainer(object):
                             # give candidates that don't have tri-gram overlap
                             # batch.src_str[i] is the list of sents in doc i
                             # batch.src_str[i][j] is the jth sentence in i document of the batch
-                            sents_count = len(batch.src_str[i])
                             max_size = int(0.2 * len(src_text))
                             candidate_text = ''
                             for j in selected_ids[i]:  # [:len(batch.src_str[i])]:
-
-
-                                if j >= len(
-                                        batch.src_str[i]):  # checks if id of the selected sent is less than size of doc
+                                if j >= len( batch.src_str[i]):  # checks if id of the selected sent is less than size of doc
                                     continue
                                 candidate = batch.src_str[i][j].strip()
                                 candidate_text = candidate_text + candidate
-
-                                # if self.args.block_trigram: # fix
-                                #     if not _block_tri(candidate, _pred):
-                                #         _pred.append(candidate)
-                                # else:
-                                _pred.append(candidate)
-
-                                if (not cal_oracle) and (not self.args.recall_eval) and len(candidate_text) >= max_size:
-                                   break
-                            print('number of sentences: {}, # of selected sents: {}'.format(len(batch.src_str[i]), len(_pred)))
+                                if self.args.block_trigram:
+                                    if not _block_tri2(candidate, _pred):
+                                        _pred.append(candidate)
+                                    else:
+                                        print('blocked ', j)
+                                else:
+                                    _pred.append(candidate)
+                                if (not cal_oracle) and (not self.args.recall_eval) and  len(candidate_text) >= max_size:
+                                    break
+                            print(
+                                'number of sentences: {}, # of selected sents: {}'.format(len(batch.src_str[i]),  len(_pred)))
                             _pred = ' '.join(_pred)
                             # if self.args.recall_eval:
                             #     print('This part limits the size of the predicted summary to the size of the gold summary')

@@ -53,7 +53,7 @@ if __name__ == '__main__':
     # global attention params
     parser.add_argument('-global_attention', default=0, type=int, choices=[0,1,2], help=" global attention types:0,1,2. 0: no global attention, 1: global attention at random indices, 2: global attention at the beginning and end of the sections  ")
     parser.add_argument('-global_attention_ratio', default=0.2, type=float, help="ratio of global attention indices chosen at random")
-    parser.add_argument('-attention_window', default=10, type=int,help=" size of the local attention window")
+    parser.add_argument('-attention_window', default=6, type=int,help=" size of the local attention window")
     # parser.add_argument('-document_sents_count', default=500, type=int, help=" The number of fixed sentences in a document (padded or truncated)")
 
     # params for EXT
@@ -98,7 +98,7 @@ if __name__ == '__main__':
 
     parser.add_argument("-train_from", default='')
     parser.add_argument("-report_rouge", type=str2bool, nargs='?', const=True, default=True)
-    parser.add_argument("-block_trigram", type=str2bool, nargs='?', const=True, default=True)
+    parser.add_argument("-block_trigram", type=str2bool, nargs='?', const=True, default=False)
 
     parser.add_argument("-num_sample_rollout", type=int, default=20)  # number of the oracle summaries generated for the reinforced learning
     args = parser.parse_args()
